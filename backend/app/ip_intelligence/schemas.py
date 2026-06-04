@@ -1,7 +1,12 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class IntegrationStatus(BaseModel):
+    status: Literal["ok", "not_configured", "error"]
+    message: str | None = None
 
 
 class NetBoxContext(BaseModel):
@@ -12,6 +17,7 @@ class NetBoxContext(BaseModel):
     city: str | None = None
     role: str | None = None
     interfaces: list[dict[str, Any]] = Field(default_factory=list)
+    status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
 
 
 class ScanContext(BaseModel):
@@ -36,6 +42,7 @@ class ActivitySummary(BaseModel):
     security_events: int = 0
     top_internal_destinations: list[ActivityCounterparty] = Field(default_factory=list)
     top_external_destinations: list[ActivityCounterparty] = Field(default_factory=list)
+    status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
 
 
 class IpSummary(BaseModel):

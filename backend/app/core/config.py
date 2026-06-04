@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,24 +18,37 @@ class Settings(BaseSettings):
     keycloak_issuer_url: AnyHttpUrl | None = None
     keycloak_audience: str = "netlens-api"
 
-    netbox_mode: Literal["mock", "real"] = "mock"
     netbox_url: AnyHttpUrl | None = None
     netbox_token: str | None = None
     netbox_verify_ssl: bool = True
+    netbox_timeout_seconds: float = 15.0
 
-    opensearch_mode: Literal["mock", "real"] = "mock"
     opensearch_url: AnyHttpUrl | None = None
     opensearch_username: str | None = None
     opensearch_password: str | None = None
     opensearch_verify_ssl: bool = True
     opensearch_index_pattern: str = "logs-*"
+    opensearch_timeout_seconds: float = 20.0
+    opensearch_timestamp_field: str = "@timestamp"
+    opensearch_source_ip_fields: list[str] = Field(
+        default_factory=lambda: ["source.ip", "src_ip", "src", "client.ip"]
+    )
+    opensearch_destination_ip_fields: list[str] = Field(
+        default_factory=lambda: ["destination.ip", "dst_ip", "dst", "server.ip"]
+    )
+    opensearch_destination_port_field: str = "destination.port"
+    opensearch_action_field: str = "event.action"
+    opensearch_block_actions: list[str] = Field(
+        default_factory=lambda: ["blocked", "block", "deny", "denied", "drop", "dropped"]
+    )
+    internal_cidrs: list[str] = Field(
+        default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    )
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
-        if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
-        return value
+    scanner_schedule_enabled: bool = False
+    scanner_schedule_cron: str = "0 2 * * *"
+    scanner_default_scope: str = "netbox-management"
+    scanner_profile: Literal["safe", "normal", "aggressive"] = "safe"
 
 
 @lru_cache

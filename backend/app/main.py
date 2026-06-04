@@ -1,13 +1,29 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health, ip_intelligence
+from app.api.routes.health import router as health_router
+from app.api.routes.ip_intelligence import router as ip_intelligence_router
 from app.core.config import get_settings
+from app.scanner.scheduler import create_scanner_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    scheduler = create_scanner_scheduler()
+    app.state.scanner_scheduler = scheduler
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.shutdown()
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="NetLens API", version="0.1.0")
+    app = FastAPI(title="NetLens API", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -17,8 +33,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(ip_intelligence.router, prefix="/api", tags=["ip-intelligence"])
+    app.include_router(health_router, prefix="/api", tags=["health"])
+    app.include_router(ip_intelligence_router, prefix="/api", tags=["ip-intelligence"])
     return app
 
 
