@@ -8,6 +8,46 @@ class IntegrationStatus(BaseModel):
     status: Literal["ok", "not_configured", "error"]
     message: str | None = None
 
+class NetBoxInterface(BaseModel):
+    id: int
+    name: str
+    type: str | None = None
+    enabled: bool | None = None
+    mac_address: str | None = None
+    description: str | None = None
+    mode: str | None = None
+    mtu: int | None = None
+    speed: int | None = None
+    duplex: str | None = None
+    untagged_vlan: str | None = None
+
+
+class NetBoxDevice(BaseModel):
+    id: int
+    name: str | None = None
+    display: str | None = None
+    status: str | None = None
+    role: str | None = None
+    device_type: str | None = None
+    interfaces: list[NetBoxInterface] = Field(default_factory=list)
+
+
+class NetBoxSite(BaseModel):
+    id: int
+    name: str
+    slug: str
+    devices: list[NetBoxDevice] = Field(default_factory=list)
+
+
+class NetBoxRegion(BaseModel):
+    id: int
+    name: str
+    slug: str
+    sites: list[NetBoxSite] = Field(default_factory=list)
+
+
+class NetBoxRegionsResponse(BaseModel):
+    regions: list[NetBoxRegion]
 
 class NetBoxContext(BaseModel):
     known: bool

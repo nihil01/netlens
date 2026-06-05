@@ -1,153 +1,127 @@
-import ipaddress
-from typing import Any
+import asyncio
+from collections import defaultdict
 
-import httpx
+import pynetbox
+from fastapi import HTTPException
 
-from app.core.config import Settings, get_settings
-from app.ip_intelligence.schemas import IntegrationStatus, NetBoxContext
+from app.core.config import Settings
 
 
 class NetBoxService:
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
+    def __init__(self) -> None:
+        self.settings = Settings()
+        self.netbox = None
 
-    @classmethod
-    def from_settings(cls) -> "NetBoxService":
-        return cls(get_settings())
+    def _is_configured(self) -> bool:
+        return bool(self.settings.netbox_url and self.settings.netbox_token)
 
-    async def lookup_ip(self, ip: str) -> NetBoxContext:
-        if not self.settings.netbox_url or not self.settings.netbox_token:
-            return NetBoxContext(
-                known=False,
-                status=IntegrationStatus(
-                    status="not_configured",
-                    message="NETBOX_URL and NETBOX_TOKEN are required",
-                ),
+    def _connect(self):
+        if self.netbox is None:
+            self.netbox = pynetbox.api(
+                str(self.settings.netbox_url).rstrip("/"),
+                token=self.settings.netbox_token,
+            )
+            self.netbox.http_session.verify = self.settings.netbox_verify_ssl
+
+        return self.netbox
+
+    async def fetch_all(self):
+        if not self._is_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="NETBOX_URL and NETBOX_TOKEN are required",
             )
 
         try:
-            async with self._client() as client:
-                ip_object = await self._find_ip_address(client, ip)
-                if not ip_object:
-                    return NetBoxContext(known=False)
+            return await asyncio.to_thread(self._load_data)
 
-                assigned = ip_object.get("assigned_object") or {}
-                device = self._extract_device(assigned)
-                interfaces = []
-                if device and device.get("id"):
-                    interfaces = await self._fetch_device_interfaces(client, int(device["id"]))
-
-                return self._map_context(ip_object, device, interfaces)
-        except httpx.HTTPError as exc:
-            return NetBoxContext(
-                known=False,
-                status=IntegrationStatus(status="error", message=f"NetBox HTTP error: {exc}"),
-            )
-        except Exception as exc:  # defensive boundary: API shape differs by NetBox version
-            return NetBoxContext(
-                known=False,
-                status=IntegrationStatus(status="error", message=f"NetBox mapping error: {exc}"),
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"NetBox mapping error: {exc}",
             )
 
-    def _client(self) -> httpx.AsyncClient:
-        headers = {
-            "Authorization": f"Token {self.settings.netbox_token}",
-            "Accept": "application/json",
-        }
-        return httpx.AsyncClient(
-            base_url=str(self.settings.netbox_url).rstrip("/"),
-            headers=headers,
-            verify=self.settings.netbox_verify_ssl,
-            timeout=self.settings.netbox_timeout_seconds,
-        )
+    def _load_data(self):
+        netbox = self._connect()
 
-    async def _find_ip_address(self, client: httpx.AsyncClient, ip: str) -> dict[str, Any] | None:
-        response = await client.get("/api/ipam/ip-addresses/", params={"q": ip, "limit": 10})
-        response.raise_for_status()
-        results = response.json().get("results", [])
-        for item in results:
-            if self._address_without_prefix(item.get("address")) == ip:
-                return item
+        regions = list(netbox.dcim.regions.all())
+        sites = list(netbox.dcim.sites.all())
+        devices = list(netbox.dcim.devices.all())
+        interfaces = list(netbox.dcim.interfaces.all())
 
-        # Exact /32 and /128 fallbacks help when NetBox search is restricted.
-        address = f"{ip}/32" if ipaddress.ip_address(ip).version == 4 else f"{ip}/128"
-        response = await client.get(
-            "/api/ipam/ip-addresses/",
-            params={"address": address, "limit": 1},
-        )
-        response.raise_for_status()
-        results = response.json().get("results", [])
-        return results[0] if results else None
+        sites_by_region = defaultdict(list)
+        devices_by_site = defaultdict(list)
+        interfaces_by_device = defaultdict(list)
 
-    async def _fetch_device_interfaces(
-        self, client: httpx.AsyncClient, device_id: int
-    ) -> list[dict[str, Any]]:
-        response = await client.get(
-            "/api/dcim/interfaces/",
-            params={"device_id": device_id, "limit": 100},
-        )
-        response.raise_for_status()
-        interfaces = []
-        for item in response.json().get("results", []):
-            interfaces.append(
+        for interface in interfaces:
+            if not interface.device:
+                continue
+
+            interfaces_by_device[interface.device.id].append({
+                "id": interface.id,
+                "name": interface.name,
+                "type": self._label(interface.type),
+                "enabled": interface.enabled,
+                "mac_address": interface.mac_address,
+                "description": interface.description,
+                "mode": self._label(interface.mode),
+                "mtu": interface.mtu,
+                "speed": interface.speed,
+                "duplex": self._label(interface.duplex),
+                "untagged_vlan": self._name(interface.untagged_vlan),
+            })
+
+        for device in devices:
+            if not device.site:
+                continue
+
+            devices_by_site[device.site.id].append({
+                "id": device.id,
+                "name": device.name,
+                "display": getattr(device, "display", None),
+                "status": self._label(device.status),
+                "role": self._name(device.role),
+                "device_type": self._device_type(device),
+                "interfaces": interfaces_by_device[device.id],
+            })
+
+        for site in sites:
+            if not site.region:
+                continue
+
+            sites_by_region[site.region.id].append({
+                "id": site.id,
+                "name": site.name,
+                "slug": site.slug,
+                "devices": devices_by_site[site.id],
+            })
+
+        return {
+            "regions": [
                 {
-                    "id": item.get("id"),
-                    "name": item.get("name"),
-                    "type": self._display(item.get("type")),
-                    "enabled": item.get("enabled"),
-                    "mac_address": item.get("mac_address"),
-                    "description": item.get("description"),
-                    "mode": self._display(item.get("mode")),
-                    "untagged_vlan": self._nested_name(item.get("untagged_vlan")),
+                    "id": region.id,
+                    "name": region.name,
+                    "slug": region.slug,
+                    "sites": sites_by_region[region.id],
                 }
-            )
-        return interfaces
-
-    def _map_context(
-        self,
-        ip_object: dict[str, Any],
-        device: dict[str, Any] | None,
-        interfaces: list[dict[str, Any]],
-    ) -> NetBoxContext:
-        if not device:
-            return NetBoxContext(known=True, interfaces=interfaces)
-
-        site = device.get("site") or {}
-        region = site.get("region") or {}
-        location = device.get("location") or {}
-        role = device.get("role") or device.get("device_role") or {}
-
-        return NetBoxContext(
-            known=True,
-            device=device.get("name"),
-            site=site.get("name"),
-            region=region.get("name"),
-            city=location.get("name") or site.get("physical_address") or site.get("name"),
-            role=role.get("name"),
-            interfaces=interfaces,
-        )
+                for region in regions
+            ]
+        }
 
     @staticmethod
-    def _extract_device(assigned: dict[str, Any]) -> dict[str, Any] | None:
-        if not assigned:
+    def _label(value):
+        if not value:
             return None
-        if assigned.get("device"):
-            return assigned["device"]
-        if assigned.get("virtual_machine"):
-            vm = assigned["virtual_machine"]
-            return {**vm, "role": {"name": "virtual-machine"}}
-        return None
+        return getattr(value, "label", None) or getattr(value, "value", None) or str(value)
 
     @staticmethod
-    def _address_without_prefix(address: str | None) -> str | None:
-        return address.split("/", 1)[0] if address else None
+    def _name(value):
+        if not value:
+            return None
+        return getattr(value, "name", None) or str(value)
 
     @staticmethod
-    def _display(value: Any) -> str | None:
-        if isinstance(value, dict):
-            return value.get("label") or value.get("value") or value.get("name")
-        return value
-
-    @staticmethod
-    def _nested_name(value: Any) -> str | None:
-        return value.get("name") if isinstance(value, dict) else None
+    def _device_type(device):
+        if not device.device_type:
+            return None
+        return getattr(device.device_type, "model", None) or getattr(device.device_type, "display", None)
