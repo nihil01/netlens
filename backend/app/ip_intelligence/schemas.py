@@ -8,9 +8,12 @@ class IntegrationStatus(BaseModel):
     status: Literal["ok", "not_configured", "error"]
     message: str | None = None
 
+
 class NetBoxInterface(BaseModel):
     id: int
     name: str
+    device_id: int | None = None
+    device: str | None = None
     type: str | None = None
     enabled: bool | None = None
     mac_address: str | None = None
@@ -26,28 +29,66 @@ class NetBoxDevice(BaseModel):
     id: int
     name: str | None = None
     display: str | None = None
+    site: str | None = None
+    region: str | None = None
     status: str | None = None
     role: str | None = None
     device_type: str | None = None
+    manufacturer: str | None = None
+    primary_ip: str | None = None
     interfaces: list[NetBoxInterface] = Field(default_factory=list)
 
 
 class NetBoxSite(BaseModel):
     id: int
     name: str
-    slug: str
+    slug: str | None = None
+    region: str | None = None
+    status: str | None = None
+    facility: str | None = None
+    physical_address: str | None = None
     devices: list[NetBoxDevice] = Field(default_factory=list)
 
 
 class NetBoxRegion(BaseModel):
     id: int
     name: str
-    slug: str
+    slug: str | None = None
+    description: str | None = None
     sites: list[NetBoxSite] = Field(default_factory=list)
 
 
 class NetBoxRegionsResponse(BaseModel):
-    regions: list[NetBoxRegion]
+    regions: list[NetBoxRegion] = Field(default_factory=list)
+
+
+class NetBoxInventory(BaseModel):
+    regions: list[NetBoxRegion] = Field(default_factory=list)
+    sites: list[NetBoxSite] = Field(default_factory=list)
+    devices: list[NetBoxDevice] = Field(default_factory=list)
+    interfaces: list[NetBoxInterface] = Field(default_factory=list)
+    status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
+
+
+class NetBoxDeviceDetail(BaseModel):
+    id: int
+    name: str
+    site: str | None = None
+    region: str | None = None
+    location: str | None = None
+    role: str | None = None
+    device_type: str | None = None
+    manufacturer: str | None = None
+    platform: str | None = None
+    status: str | None = None
+    serial: str | None = None
+    asset_tag: str | None = None
+    primary_ip: str | None = None
+    comments: str | None = None
+    interfaces: list[NetBoxInterface] = Field(default_factory=list)
+    cache: dict[str, Any] = Field(default_factory=dict)
+    status_meta: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
+
 
 class NetBoxContext(BaseModel):
     known: bool

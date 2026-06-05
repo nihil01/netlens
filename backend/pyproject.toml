@@ -14,6 +14,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "redis>=5.0.8",
     "apscheduler>=3.10.4",
+    "manuf>=1.1.5",
 ]
 
 [dependency-groups]

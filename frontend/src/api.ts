@@ -1,3 +1,8 @@
+export type IntegrationStatus = {
+  status: 'ok' | 'not_configured' | 'error';
+  message: string | null;
+};
+
 export type NetBoxContext = {
   known: boolean;
   device: string | null;
@@ -6,6 +11,7 @@ export type NetBoxContext = {
   city: string | null;
   role: string | null;
   interfaces: Array<Record<string, unknown>>;
+  status: IntegrationStatus;
 };
 
 export type ScanContext = {
@@ -30,6 +36,7 @@ export type ActivitySummary = {
   security_events: number;
   top_internal_destinations: ActivityCounterparty[];
   top_external_destinations: ActivityCounterparty[];
+  status: IntegrationStatus;
 };
 
 export type IpSummary = {
@@ -39,12 +46,85 @@ export type IpSummary = {
   activity: ActivitySummary;
 };
 
+export type NetBoxRegion = {
+  id: number;
+  name: string;
+  slug: string | null;
+  description: string | null;
+};
+
+export type NetBoxSite = {
+  id: number;
+  name: string;
+  slug: string | null;
+  region: string | null;
+  status: string | null;
+  facility: string | null;
+  physical_address: string | null;
+};
+
+export type NetBoxDevice = {
+  id: number;
+  name: string;
+  site: string | null;
+  region: string | null;
+  role: string | null;
+  device_type: string | null;
+  manufacturer: string | null;
+  status: string | null;
+  primary_ip: string | null;
+};
+
+export type NetBoxInterface = {
+  id: number;
+  name: string;
+  device_id: number | null;
+  device: string | null;
+  type: string | null;
+  enabled: boolean | null;
+  mac_address: string | null;
+  description: string | null;
+  mode: string | null;
+  untagged_vlan: string | null;
+};
+
+export type NetBoxInventory = {
+  regions: NetBoxRegion[];
+  sites: NetBoxSite[];
+  devices: NetBoxDevice[];
+  interfaces: NetBoxInterface[];
+  status: IntegrationStatus;
+};
+
+export type NetBoxDeviceDetail = NetBoxDevice & {
+  location: string | null;
+  platform: string | null;
+  serial: string | null;
+  asset_tag: string | null;
+  comments: string | null;
+  interfaces: NetBoxInterface[];
+  cache: Record<string, unknown>;
+  status_meta: IntegrationStatus;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
-export async function fetchIpSummary(ip: string): Promise<IpSummary> {
-  const response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/summary`);
+async function apiGet<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`);
   if (!response.ok) {
     throw new Error(`API returned ${response.status}`);
   }
-  return response.json();
+  return response.json() as Promise<T>;
+}
+
+export function fetchIpSummary(ip: string): Promise<IpSummary> {
+  return apiGet<IpSummary>(`/ip/${encodeURIComponent(ip)}/summary`);
+}
+
+export function fetchNetBoxInventory(): Promise<NetBoxInventory> {
+  return apiGet<NetBoxInventory>('/netbox/inventory');
+}
+
+export function fetchNetBoxDeviceDetail(deviceId: number): Promise<NetBoxDeviceDetail> {
+  return apiGet<NetBoxDeviceDetail>(`/netbox/devices/${deviceId}/detail`);
 }
