@@ -15,6 +15,7 @@ dependencies = [
     "redis>=5.0.8",
     "apscheduler>=3.10.4",
     "manuf>=1.1.5",
+    "pynetbox>=7.7.0",
 ]
 
 [dependency-groups]
