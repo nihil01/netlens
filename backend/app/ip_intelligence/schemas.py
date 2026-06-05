@@ -17,6 +17,9 @@ class NetBoxInterface(BaseModel):
     type: str | None = None
     enabled: bool | None = None
     mac_address: str | None = None
+    mac_vendor: str | None = None
+    mac_oui: str | None = None
+    mac_vendor_source: str | None = None
     description: str | None = None
     mode: str | None = None
     mtu: int | None = None

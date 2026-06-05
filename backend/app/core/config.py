@@ -13,7 +13,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://netlens:netlens@localhost:5432/netlens"
     redis_url: str = "redis://localhost:6379/0"
     netbox_device_cache_ttl_seconds: int = 3600
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+        ]
+    )
 
     auth_enabled: bool = False
     keycloak_issuer_url: AnyHttpUrl | None = None

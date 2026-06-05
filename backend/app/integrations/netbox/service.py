@@ -8,6 +8,7 @@ import pynetbox
 
 from app.cache.redis_cache import JsonRedisCache
 from app.core.config import Settings, get_settings
+from app.integrations.netbox.mac_vendor import MacVendorResolver
 from app.ip_intelligence.schemas import (
     IntegrationStatus,
     NetBoxContext,
@@ -28,6 +29,7 @@ class NetBoxService:
         self.settings = settings or get_settings()
         self.cache = cache or JsonRedisCache()
         self.netbox: pynetbox.core.api.Api | None = None
+        self.mac_vendor_resolver = MacVendorResolver()
 
     @classmethod
     def from_settings(cls) -> "NetBoxService":
@@ -147,17 +149,25 @@ class NetBoxService:
             )
 
     async def get_device_detail(self, device_id: int) -> NetBoxDeviceDetail:
+        cache_key = f"netbox:device:{device_id}"
+        cached = await self._cache_get(cache_key)
+        if cached:
+            cached["cache"] = {**cached.get("cache", {}), "hit": True, "key": cache_key}
+            return NetBoxDeviceDetail.model_validate(cached)
+
         if not self._is_configured():
             return NetBoxDeviceDetail(
                 id=device_id,
                 name=f"device-{device_id}",
+                cache={"hit": False, "key": cache_key},
                 status_meta=IntegrationStatus(
                     status="not_configured",
                     message="NETBOX_URL and NETBOX_TOKEN are required",
                 ),
             )
 
-        detail = await asyncio.to_thread(self._load_device_detail, device_id)
+        detail = await asyncio.to_thread(self._load_device_detail, device_id, cache_key)
+        await self._cache_set(cache_key, detail.model_dump(mode="json"))
         return detail
 
     def _load_inventory(self) -> NetBoxInventory:
@@ -174,7 +184,7 @@ class NetBoxService:
             interfaces=[self._map_interface(item) for item in interfaces],
         )
 
-    def _load_device_detail(self, device_id: int) -> NetBoxDeviceDetail:
+    def _load_device_detail(self, device_id: int, cache_key: str) -> NetBoxDeviceDetail:
         netbox = self._connect()
         device = netbox.dcim.devices.get(device_id)
         if device is None:
@@ -184,7 +194,7 @@ class NetBoxService:
             self._map_interface(item)
             for item in netbox.dcim.interfaces.filter(device_id=device_id)
         ]
-        return self._map_device_detail(device, interfaces)
+        return self._map_device_detail(device, interfaces, cache_key)
 
     def _lookup_ip_sync(self, ip: str) -> NetBoxContext:
         netbox = self._connect()
@@ -286,6 +296,8 @@ class NetBoxService:
 
     def _map_interface(self, item: Any) -> NetBoxInterface:
         device = self._field(item, "device")
+        mac = self._field(item, "mac_address")
+        mac_info = self.mac_vendor_resolver.lookup(str(mac)) if mac else None
         return NetBoxInterface(
             id=int(self._field(item, "id")),
             name=self._field(item, "name") or str(self._field(item, "id")),
@@ -293,7 +305,10 @@ class NetBoxService:
             device=self._name(device),
             type=self._label(self._field(item, "type")),
             enabled=self._field(item, "enabled"),
-            mac_address=self._field(item, "mac_address"),
+            mac_address=mac_info.mac_address if mac_info else mac,
+            mac_vendor=mac_info.vendor if mac_info else None,
+            mac_oui=mac_info.oui if mac_info else None,
+            mac_vendor_source=mac_info.source if mac_info else "missing",
             description=self._field(item, "description"),
             mode=self._label(self._field(item, "mode")),
             mtu=self._field(item, "mtu"),
@@ -303,7 +318,7 @@ class NetBoxService:
         )
 
     def _map_device_detail(
-        self, device: Any, interfaces: list[NetBoxInterface]) -> NetBoxDeviceDetail:
+        self, device: Any, interfaces: list[NetBoxInterface], cache_key: str) -> NetBoxDeviceDetail:
         basic = self._map_device(device)
         return NetBoxDeviceDetail(
             id=basic.id,
@@ -321,6 +336,12 @@ class NetBoxService:
             primary_ip=basic.primary_ip,
             comments=self._field(device, "comments"),
             interfaces=interfaces,
+            cache={
+                "hit": False,
+                "key": cache_key,
+                "stored_at": datetime.now(UTC).isoformat(),
+                "ttl_seconds": self.settings.netbox_device_cache_ttl_seconds,
+            },
         )
 
     async def _cache_get(self, key: str) -> dict[str, Any] | None:
