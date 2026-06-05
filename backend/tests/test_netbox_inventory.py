@@ -1,0 +1,86 @@
+from app.core.config import Settings
+from app.integrations.netbox.service import NetBoxService
+
+
+class MemoryJsonCache:
+    def __init__(self) -> None:
+        self.values: dict[str, dict] = {}
+        self.ttl: dict[str, int] = {}
+
+    async def get_json(self, key: str) -> dict | None:
+        return self.values.get(key)
+
+    async def set_json(self, key: str, value: dict, ttl_seconds: int) -> None:
+        self.values[key] = value
+        self.ttl[key] = ttl_seconds
+
+
+def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
+    service = NetBoxService(Settings(netbox_url="https://netbox.example.com", netbox_token="token"))
+
+    region = service._map_region({"id": 1, "name": "Azerbaijan", "slug": "az"})
+    site = service._map_site(
+        {
+            "id": 10,
+            "name": "Baku HQ",
+            "region": {"name": "Azerbaijan"},
+            "status": {"label": "Active"},
+        }
+    )
+    device = service._map_device(
+        {
+            "id": 100,
+            "name": "SW-BAKU-01",
+            "site": {"name": "Baku HQ", "region": {"name": "Azerbaijan"}},
+            "role": {"name": "switch"},
+            "device_type": {"name": "C9300", "manufacturer": {"name": "Cisco"}},
+            "status": {"value": "active"},
+            "primary_ip4": {"address": "10.1.1.10/32"},
+            "serial": "heavy-detail-field-should-not-be-in-list-dto",
+        }
+    )
+    interface = service._map_interface(
+        {
+            "id": 1000,
+            "name": "Gi1/0/1",
+            "device": {"id": 100, "name": "SW-BAKU-01"},
+            "type": {"label": "1000BASE-T"},
+            "enabled": True,
+        }
+    )
+
+    assert region.name == "Azerbaijan"
+    assert site.region == "Azerbaijan"
+    assert device.manufacturer == "Cisco"
+    assert device.primary_ip == "10.1.1.10/32"
+    assert not hasattr(device, "serial")
+    assert interface.device_id == 100
+
+
+async def test_device_detail_cache_uses_device_id_key() -> None:
+    cache = MemoryJsonCache()
+    settings = Settings(
+        netbox_url="https://netbox.example.com",
+        netbox_token="token",
+        netbox_device_cache_ttl_seconds=120,
+    )
+    service = NetBoxService(settings, cache=cache)
+    detail = service._map_device_detail(
+        {
+            "id": 100,
+            "name": "SW-BAKU-01",
+            "site": {"name": "Baku HQ"},
+            "device_type": {"name": "C9300", "manufacturer": {"name": "Cisco"}},
+            "serial": "FOC123",
+        },
+        interfaces=[],
+        cache_key="netbox:device:100",
+    )
+
+    await service._cache_set("netbox:device:100", detail.model_dump(mode="json"))
+    cached = await service._cache_get("netbox:device:100")
+
+    assert cache.ttl["netbox:device:100"] == 120
+    assert cached is not None
+    assert cached["id"] == 100
+    assert cached["serial"] == "FOC123"
