@@ -3,25 +3,52 @@ from typing import Any
 
 import redis.asyncio as redis
 
+from app.core.config import Settings
+
 
 class JsonRedisCache:
-    def __init__(self, redis_url: str) -> None:
-        self.redis_url = redis_url
+    def __init__(self) -> None:
+
+        self.settings = Settings()
+        self.enabled = bool(self.settings.redis_url)
+        self.client: redis.Redis | None = None
+
+        if self.enabled:
+            print("enable redis cache")
+            self.client = redis.from_url(
+                self.settings.redis_url,
+                decode_responses=True,
+            )
 
     async def get_json(self, key: str) -> dict[str, Any] | None:
-        client = redis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
-        try:
-            value = await client.get(key)
-        finally:
-            await client.aclose()
-        if value is None:
+        if not self.client:
             return None
-        loaded = json.loads(value)
-        return loaded if isinstance(loaded, dict) else None
+
+        raw = await self.client.get(key)
+        if not raw:
+            return None
+
+        return json.loads(raw)
 
     async def set_json(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
-        client = redis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
-        try:
-            await client.set(key, json.dumps(value, default=str), ex=ttl_seconds)
-        finally:
-            await client.aclose()
+        if not self.client:
+            print("redis client is disabled")
+            return
+
+        print("redis set:", key, "ttl:", ttl_seconds)
+
+        result = await self.client.set(
+            key,
+            json.dumps(value, ensure_ascii=False),
+            ex=ttl_seconds,
+        )
+
+        print("redis set result:", result)
+
+    async def delete(self, key: str) -> None:
+        if self.client:
+            await self.client.delete(key)
+
+    async def close(self) -> None:
+        if self.client:
+            await self.client.aclose()

@@ -26,7 +26,7 @@ class NetBoxService:
         self, settings: Settings | None = None, cache: JsonRedisCache | None = None
     ) -> None:
         self.settings = settings or get_settings()
-        self.cache = cache or JsonRedisCache(self.settings.redis_url)
+        self.cache = cache or JsonRedisCache()
         self.netbox: pynetbox.core.api.Api | None = None
 
     @classmethod
@@ -47,8 +47,8 @@ class NetBoxService:
         return self.netbox
 
     async def fetch_all(self) -> NetBoxRegionsResponse:
-        """Compatibility endpoint for the nested region -> site -> device tree."""
         inventory = await self.get_inventory()
+
         if inventory.status.status != "ok":
             return NetBoxRegionsResponse(regions=[])
 
@@ -63,22 +63,70 @@ class NetBoxService:
         for device in inventory.devices:
             if not device.site:
                 continue
+
             devices_by_site[device.site].append(
-                device.model_copy(update={"interfaces": interfaces_by_device[device.id]})
+                device.model_copy(
+                    update={
+                        "interfaces": interfaces_by_device[device.id],
+                    }
+                )
             )
 
         for site in inventory.sites:
             if not site.region:
                 continue
+
             sites_by_region[site.region].append(
-                site.model_copy(update={"devices": devices_by_site[site.name]})
+                site.model_copy(
+                    update={
+                        "devices": devices_by_site[site.name],
+                    }
+                )
             )
 
         regions = [
-            region.model_copy(update={"sites": sites_by_region[region.name]})
+            region.model_copy(
+                update={
+                    "sites": sites_by_region[region.name],
+                }
+            )
             for region in inventory.regions
         ]
+
         return NetBoxRegionsResponse(regions=regions)
+
+    async def get_inventory(self) -> NetBoxInventory:
+        cache_key = "netbox:inventory"
+
+        cached = await self._cache_get(cache_key)
+        if cached:
+            return NetBoxInventory.model_validate(cached)
+
+        if not self._is_configured():
+            return NetBoxInventory(
+                status=IntegrationStatus(
+                    status="not_configured",
+                    message="NETBOX_URL and NETBOX_TOKEN are required",
+                )
+            )
+
+        try:
+            inventory = await asyncio.to_thread(self._load_inventory)
+
+            await self._cache_set(
+                cache_key,
+                inventory.model_dump(mode="json"),
+            )
+
+            return inventory
+
+        except Exception as exc:
+            return NetBoxInventory(
+                status=IntegrationStatus(
+                    status="error",
+                    message=f"NetBox mapping error: {exc}",
+                )
+            )
 
     async def lookup_ip(self, ip: str) -> NetBoxContext:
         if not self._is_configured():
@@ -98,43 +146,18 @@ class NetBoxService:
                 status=IntegrationStatus(status="error", message=f"NetBox mapping error: {exc}"),
             )
 
-    async def get_inventory(self) -> NetBoxInventory:
-        """Live inventory lists. Keep these fresh; only heavy device details are cached."""
-        if not self._is_configured():
-            return NetBoxInventory(
-                status=IntegrationStatus(
-                    status="not_configured",
-                    message="NETBOX_URL and NETBOX_TOKEN are required",
-                )
-            )
-
-        try:
-            return await asyncio.to_thread(self._load_inventory)
-        except Exception as exc:
-            return NetBoxInventory(
-                status=IntegrationStatus(status="error", message=f"NetBox mapping error: {exc}")
-            )
-
     async def get_device_detail(self, device_id: int) -> NetBoxDeviceDetail:
-        cache_key = f"netbox:device:{device_id}"
-        cached = await self._cache_get(cache_key)
-        if cached:
-            cached["cache"] = {**cached.get("cache", {}), "hit": True, "key": cache_key}
-            return NetBoxDeviceDetail.model_validate(cached)
-
         if not self._is_configured():
             return NetBoxDeviceDetail(
                 id=device_id,
                 name=f"device-{device_id}",
-                cache={"hit": False, "key": cache_key},
                 status_meta=IntegrationStatus(
                     status="not_configured",
                     message="NETBOX_URL and NETBOX_TOKEN are required",
                 ),
             )
 
-        detail = await asyncio.to_thread(self._load_device_detail, device_id, cache_key)
-        await self._cache_set(cache_key, detail.model_dump(mode="json"))
+        detail = await asyncio.to_thread(self._load_device_detail, device_id)
         return detail
 
     def _load_inventory(self) -> NetBoxInventory:
@@ -151,7 +174,7 @@ class NetBoxService:
             interfaces=[self._map_interface(item) for item in interfaces],
         )
 
-    def _load_device_detail(self, device_id: int, cache_key: str) -> NetBoxDeviceDetail:
+    def _load_device_detail(self, device_id: int) -> NetBoxDeviceDetail:
         netbox = self._connect()
         device = netbox.dcim.devices.get(device_id)
         if device is None:
@@ -161,7 +184,7 @@ class NetBoxService:
             self._map_interface(item)
             for item in netbox.dcim.interfaces.filter(device_id=device_id)
         ]
-        return self._map_device_detail(device, interfaces, cache_key)
+        return self._map_device_detail(device, interfaces)
 
     def _lookup_ip_sync(self, ip: str) -> NetBoxContext:
         netbox = self._connect()
@@ -280,8 +303,7 @@ class NetBoxService:
         )
 
     def _map_device_detail(
-        self, device: Any, interfaces: list[NetBoxInterface], cache_key: str
-    ) -> NetBoxDeviceDetail:
+        self, device: Any, interfaces: list[NetBoxInterface]) -> NetBoxDeviceDetail:
         basic = self._map_device(device)
         return NetBoxDeviceDetail(
             id=basic.id,
@@ -299,12 +321,6 @@ class NetBoxService:
             primary_ip=basic.primary_ip,
             comments=self._field(device, "comments"),
             interfaces=interfaces,
-            cache={
-                "hit": False,
-                "key": cache_key,
-                "stored_at": datetime.now(UTC).isoformat(),
-                "ttl_seconds": self.settings.netbox_device_cache_ttl_seconds,
-            },
         )
 
     async def _cache_get(self, key: str) -> dict[str, Any] | None:
