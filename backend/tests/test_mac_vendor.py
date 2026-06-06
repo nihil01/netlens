@@ -1,5 +1,6 @@
 from app.integrations.netbox.mac_vendor import (
     MacVendorResolver,
+    WiresharkManufDataset,
     enrich_mac_table_entry,
     normalize_mac_address,
 )
@@ -20,6 +21,37 @@ def test_mac_vendor_resolver_uses_prefix_dataset() -> None:
     assert result.oui == "00:11:22"
     assert result.vendor == "Cisco Systems"
     assert result.source == "prefix-dataset"
+
+
+def test_wireshark_dataset_reads_cached_json_by_oid(tmp_path) -> None:
+    cache_file = tmp_path / "manuf.json"
+    cache_file.write_text(
+        '{"created_at":"2026-06-03T20:40:34Z","data":{"001122":"Cisco Systems, Inc"}}',
+        encoding="utf-8",
+    )
+    dataset = WiresharkManufDataset(
+        cache_path=cache_file,
+        source_url="https://invalid.example/manuf.json",
+    )
+
+    assert dataset.lookup_oid("00:11:22") == "Cisco Systems, Inc"
+    assert dataset.lookup_oid("001122") == "Cisco Systems, Inc"
+    assert dataset.created_at == "2026-06-03T20:40:34Z"
+
+
+def test_mac_vendor_resolver_uses_wireshark_dataset_without_manuf(tmp_path) -> None:
+    cache_file = tmp_path / "manuf.json"
+    cache_file.write_text(
+        '{"created_at":"2026-06-03T20:40:34Z","data":{"001122":"Cisco Systems, Inc"}}',
+        encoding="utf-8",
+    )
+    resolver = MacVendorResolver(dataset=WiresharkManufDataset(cache_path=cache_file))
+
+    result = resolver.lookup("0011.2233.4455")
+
+    assert result.oui == "00:11:22"
+    assert result.vendor == "Cisco Systems, Inc"
+    assert result.source == "wireshark-manuf-json"
 
 
 def test_mac_vendor_resolver_handles_unknown_or_invalid_mac() -> None:

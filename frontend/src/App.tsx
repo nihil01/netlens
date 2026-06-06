@@ -1,8 +1,10 @@
-import { Fragment, FormEvent, ReactNode, useMemo, useState } from 'react';
+import { Fragment, FormEvent, ReactNode, useMemo, useState, type PointerEvent, type WheelEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   Boxes,
+  Building2,
+  Cable,
   Cpu,
   Database,
   GitBranch,
@@ -12,7 +14,7 @@ import {
   Radar,
   Search,
   Server,
-  ShieldCheck,
+  Router,
   Sparkles,
   Waypoints,
 } from 'lucide-react';
@@ -259,7 +261,7 @@ export function App() {
             <div className="workspace-header">
               <div>
                 <div className="panel-title"><Waypoints size={20} /> Region graph</div>
-                <p className="muted-text">Выбери регион, потом кликай по узлам — справа появятся данные. Визуально: region → site → device → interface.</p>
+                <p className="muted-text">Граф теперь менее плотный: крупнее слои, drag/pan как на карте, zoom колесом/кнопками и режим на всё окно с возвратом в обычный div.</p>
               </div>
               <select value={selectedRegion ?? ''} onChange={(event) => setSelectedRegionName(event.target.value)}>
                 {(data?.regions ?? []).map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
@@ -275,7 +277,7 @@ export function App() {
         <section className="tab-panel mac-tab">
           <article className="panel wide-panel">
             <div className="panel-title"><Cpu size={20} /> MAC/OUI enrichment</div>
-            <p className="muted-text">Если vendor пустой — OUI не найден в `manuf`, но MAC нормализован и источник показан. Раньше этого не было в API schema/UI, поэтому “отработка БД по MAC” визуально не проявлялась.</p>
+            <p className="muted-text">Vendor берётся из cached Wireshark `manuf.json` (`created_at` сохраняется в кеше), lookup идёт напрямую по OID/OUI ключу без Python `manuf`.</p>
             <InterfaceList interfaces={macInterfaces} showDevice showVendor />
           </article>
         </section>
@@ -344,39 +346,39 @@ function buildGraph(
 ): { nodes: GraphNode[]; links: GraphLink[] } {
   if (!region) return { nodes: [], links: [] };
 
-  const nodes: GraphNode[] = [{ id: `region:${region}`, label: region, type: 'region', x: 500, y: 70 }];
+  const nodes: GraphNode[] = [{ id: `region:${region}`, label: region, type: 'region', x: 720, y: 90 }];
   const links: GraphLink[] = [];
-  const siteSpacing = 860 / Math.max(sites.length, 1);
+  const siteSpacing = 1260 / Math.max(sites.length, 1);
 
   sites.forEach((site, siteIndex) => {
-    const siteX = 70 + siteSpacing * siteIndex + siteSpacing / 2;
-    const siteNode: GraphNode = { id: `site:${site.id}`, label: site.name, type: 'site', x: siteX, y: 210, meta: site };
+    const siteX = 90 + siteSpacing * siteIndex + siteSpacing / 2;
+    const siteNode: GraphNode = { id: `site:${site.id}`, label: site.name, type: 'site', x: siteX, y: 280, meta: site };
     nodes.push(siteNode);
     links.push({ from: `region:${region}`, to: siteNode.id });
 
-    const siteDevices = devices.filter((device) => device.site === site.name).slice(0, 10);
-    const deviceSpacing = Math.min(120, 760 / Math.max(siteDevices.length, 1));
+    const siteDevices = devices.filter((device) => device.site === site.name).slice(0, 8);
+    const deviceSpacing = Math.min(170, 1120 / Math.max(siteDevices.length, 1));
     const startX = siteX - ((siteDevices.length - 1) * deviceSpacing) / 2;
     siteDevices.forEach((device, deviceIndex) => {
       const deviceNode: GraphNode = {
         id: `device:${device.id}`,
         label: device.name,
         type: 'device',
-        x: Math.max(45, Math.min(955, startX + deviceIndex * deviceSpacing)),
-        y: 360,
+        x: Math.max(65, Math.min(1375, startX + deviceIndex * deviceSpacing)),
+        y: 500,
         meta: device,
       };
       nodes.push(deviceNode);
       links.push({ from: siteNode.id, to: deviceNode.id });
 
-      const ifaces = (interfacesByDevice.get(device.id) ?? []).filter((iface) => iface.mac_address).slice(0, 4);
+      const ifaces = (interfacesByDevice.get(device.id) ?? []).filter((iface) => iface.mac_address).slice(0, 3);
       ifaces.forEach((iface, ifaceIndex) => {
         const ifaceNode: GraphNode = {
           id: `interface:${iface.id}`,
           label: iface.name,
           type: 'interface',
-          x: deviceNode.x + (ifaceIndex - (ifaces.length - 1) / 2) * 42,
-          y: 505,
+          x: deviceNode.x + (ifaceIndex - (ifaces.length - 1) / 2) * 74,
+          y: 710,
           meta: iface,
         };
         nodes.push(ifaceNode);
@@ -457,28 +459,92 @@ function DeviceDetailPanel({
 
 function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: GraphNode[]; links: GraphLink[] }; selectedId?: string; onSelect: (node: GraphNode) => void }) {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const [graphMode, setGraphMode] = useState<'inline' | 'expanded'>('inline');
+  const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+
+  function resetViewport() {
+    setViewport({ x: 0, y: 0, scale: 1 });
+  }
+
+  function moveViewport(deltaX: number, deltaY: number) {
+    setViewport((current) => ({ ...current, x: current.x + deltaX, y: current.y + deltaY }));
+  }
+
+  function zoom(delta: number) {
+    setViewport((current) => ({ ...current, scale: Math.min(2.4, Math.max(0.55, current.scale + delta)) }));
+  }
+
+  function onPointerDown(event: PointerEvent<SVGSVGElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragStart({ x: event.clientX, y: event.clientY });
+  }
+
+  function onPointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (!dragStart) return;
+    moveViewport(event.clientX - dragStart.x, event.clientY - dragStart.y);
+    setDragStart({ x: event.clientX, y: event.clientY });
+  }
+
+  function onWheel(event: WheelEvent<SVGSVGElement>) {
+    event.preventDefault();
+    zoom(event.deltaY > 0 ? -0.08 : 0.08);
+  }
+
+  function toggleGraphMode() {
+    setGraphMode((current) => (current === 'expanded' ? 'inline' : 'expanded'));
+  }
+
   return (
-    <div className="graph-canvas">
-      <svg viewBox="0 0 1000 590" role="img" aria-label="NetBox region graph">
+    <div className={`graph-canvas ${graphMode}`}>
+      <div className="graph-toolbar">
+        <button type="button" onClick={() => zoom(0.12)}>+</button>
+        <button type="button" onClick={() => zoom(-0.12)}>−</button>
+        <button type="button" onClick={resetViewport}>reset</button>
+        <button type="button" onClick={toggleGraphMode}>{graphMode === 'expanded' ? 'minimize to div' : 'open full window'}</button>
+      </div>
+      <svg
+        onPointerDown={onPointerDown}
+        onPointerLeave={() => setDragStart(null)}
+        onPointerMove={onPointerMove}
+        onPointerUp={() => setDragStart(null)}
+        onWheel={onWheel}
+        role="img"
+        aria-label="NetBox region graph"
+        viewBox="0 0 1440 820"
+      >
         <defs>
           <filter id="glow"><feGaussianBlur stdDeviation="4" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
-        {graph.links.map((link) => {
-          const from = nodeById.get(link.from);
-          const to = nodeById.get(link.to);
-          if (!from || !to) return null;
-          return <line className="graph-link" key={`${link.from}-${link.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
-        })}
-        {graph.nodes.map((node) => (
-          <g className={`graph-node ${selectedId === node.id ? 'selected' : ''}`} key={node.id} onClick={() => onSelect(node)} tabIndex={0}>
-            <circle cx={node.x} cy={node.y} fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 24 : node.type === 'interface' ? 10 : 16} />
-            <text x={node.x} y={node.y + (node.type === 'interface' ? 26 : 34)}>{node.label}</text>
-          </g>
-        ))}
+        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+          {graph.links.map((link) => {
+            const from = nodeById.get(link.from);
+            const to = nodeById.get(link.to);
+            if (!from || !to) return null;
+            return <line className="graph-link" key={`${link.from}-${link.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
+          })}
+          {graph.nodes.map((node) => (
+            <g className={`graph-node ${selectedId === node.id ? 'selected' : ''}`} key={node.id} onClick={() => onSelect(node)} tabIndex={0}>
+              <circle cx={node.x} cy={node.y} fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 18 : 26} />
+              <foreignObject x={node.x - 16} y={node.y - 16} width="32" height="32">
+                <div className="graph-node-icon" style={{ color: nodeColor(node.type) }}><GraphNodeIcon type={node.type} /></div>
+              </foreignObject>
+              <text x={node.x} y={node.y + (node.type === 'interface' ? 42 : 50)}>{node.label}</text>
+            </g>
+          ))}
+        </g>
       </svg>
       {!graph.nodes.length && <p className="muted-text">Нет данных для графа.</p>}
     </div>
   );
+}
+
+function GraphNodeIcon({ type }: { type: GraphNodeType }) {
+  const size = 22;
+  if (type === 'region') return <MapPinned size={size} />;
+  if (type === 'site') return <Building2 size={size} />;
+  if (type === 'device') return <Router size={size} />;
+  return <Cable size={size} />;
 }
 
 function GraphInspector({ node, onSelectDevice }: { node: GraphNode | null; onSelectDevice: (deviceId: number) => void }) {
