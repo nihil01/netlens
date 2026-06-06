@@ -12,7 +12,6 @@ import {
   Radar,
   Search,
   Server,
-  ShieldCheck,
   Sparkles,
   Waypoints,
 } from 'lucide-react';
@@ -156,11 +155,9 @@ export function App() {
     <main className="shell">
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow"><Sparkles size={14} /> Network Intelligence Platform</p>
+          <p className="eyebrow"><Sparkles size={14} /> Şəbəkə analitikası</p>
           <h1>NetLens</h1>
-          <p className="subtitle">
-            Живой NetBox inventory, Redis-cached device detail, MAC/OUI enrichment и OSINT-style graph по регионам. Без сырого JSON — все слои видны и кликабельны.
-          </p>
+          <p className="subtitle">NetBox inventarı, qurğu detalları, MAC/OUI və IP analizi.</p>
         </div>
         <div className="hero-orb" aria-hidden="true">
           <span />
@@ -169,29 +166,29 @@ export function App() {
       </section>
 
       <section className="overview-grid">
-        <MetricCard icon={<MapPinned size={20} />} label="Regions" value={data?.regions.length ?? 0} />
-        <MetricCard icon={<Layers3 size={20} />} label="Sites" value={data?.sites.length ?? 0} />
-        <MetricCard icon={<Server size={20} />} label="Devices" value={data?.devices.length ?? 0} />
-        <MetricCard icon={<Network size={20} />} label="Interfaces" value={data?.interfaces.length ?? 0} />
+        <MetricCard icon={<MapPinned size={20} />} label="Regionlar" value={data?.regions.length ?? 0} />
+        <MetricCard icon={<Layers3 size={20} />} label="Sahələr" value={data?.sites.length ?? 0} />
+        <MetricCard icon={<Server size={20} />} label="Qurğular" value={data?.devices.length ?? 0} />
+        <MetricCard icon={<Network size={20} />} label="İnterfeyslər" value={data?.interfaces.length ?? 0} />
       </section>
 
-      {inventory.isLoading && <div className="panel shimmer">Загружаю NetBox inventory...</div>}
-      {inventory.isError && <div className="panel error">NetBox inventory error: {(inventory.error as Error).message}</div>}
+      {inventory.isLoading && <div className="panel shimmer">NetBox inventarı yüklənir...</div>}
+      {inventory.isError && <div className="panel error">NetBox inventar xətası: {(inventory.error as Error).message}</div>}
       {data?.status.status !== 'ok' && (
-        <div className="panel warning">NetBox status: {data?.status.message ?? data?.status.status}</div>
+        <div className="panel warning">NetBox statusu: {data?.status.message ?? data?.status.status}</div>
       )}
 
-      <nav className="tabs" aria-label="NetLens sections">
-        <TabButton active={activeTab === 'inventory'} icon={<Boxes size={18} />} onClick={() => setActiveTab('inventory')}>Inventory</TabButton>
-        <TabButton active={activeTab === 'graph'} icon={<Waypoints size={18} />} onClick={() => setActiveTab('graph')}>Graph view</TabButton>
+      <nav className="tabs" aria-label="NetLens bölmələri">
+        <TabButton active={activeTab === 'inventory'} icon={<Boxes size={18} />} onClick={() => setActiveTab('inventory')}>İnventar</TabButton>
+        <TabButton active={activeTab === 'graph'} icon={<Waypoints size={18} />} onClick={() => setActiveTab('graph')}>Qraf</TabButton>
         <TabButton active={activeTab === 'mac'} icon={<Cpu size={18} />} onClick={() => setActiveTab('mac')}>MAC/OUI</TabButton>
-        <TabButton active={activeTab === 'ip'} icon={<Radar size={18} />} onClick={() => setActiveTab('ip')}>IP analysis</TabButton>
+        <TabButton active={activeTab === 'ip'} icon={<Radar size={18} />} onClick={() => setActiveTab('ip')}>IP analizi</TabButton>
       </nav>
 
       {activeTab === 'inventory' && (
         <section className="tab-panel inventory-tab">
           <aside className="panel region-rail">
-            <div className="panel-title"><MapPinned size={20} /> Regions</div>
+            <div className="panel-title"><MapPinned size={20} /> Regionlar</div>
             <div className="region-buttons">
               {(data?.regions ?? []).map((region) => (
                 <button
@@ -201,21 +198,21 @@ export function App() {
                   type="button"
                 >
                   <b>{region.name}</b>
-                  <span>{sitesByRegion.get(region.name)?.length ?? 0} sites</span>
+                  <span>{sitesByRegion.get(region.name)?.length ?? 0} sahə</span>
                 </button>
               ))}
-              {!data?.regions.length && <p className="muted-text">Нет регионов или NetBox не настроен.</p>}
+              {!data?.regions.length && <p className="muted-text">Region yoxdur və ya NetBox qoşulmayıb.</p>}
             </div>
           </aside>
 
           <section className="panel region-workspace">
             <div className="workspace-header">
               <div>
-                <div className="panel-title"><Layers3 size={20} /> {selectedRegion ?? 'No region selected'}</div>
-                <p className="muted-text">Sites: {selectedRegionSites.length} · Devices: {selectedRegionDevices.length} · Interfaces: {selectedRegionInterfaceCount}</p>
+                <div className="panel-title"><Layers3 size={20} /> {selectedRegion ?? 'Region seçilməyib'}</div>
+                <p className="muted-text">Sahələr: {selectedRegionSites.length} · Qurğular: {selectedRegionDevices.length} · İnterfeyslər: {selectedRegionInterfaceCount}</p>
               </div>
               <button className="ghost-button" type="button" onClick={() => setActiveTab('graph')}>
-                <GitBranch size={16} /> открыть граф
+                <GitBranch size={16} /> Qrafı aç
               </button>
             </div>
 
@@ -258,8 +255,8 @@ export function App() {
           <article className="panel graph-panel">
             <div className="workspace-header">
               <div>
-                <div className="panel-title"><Waypoints size={20} /> Region graph</div>
-                <p className="muted-text">Выбери регион, потом кликай по узлам — справа появятся данные. Визуально: region → site → device → interface.</p>
+                <div className="panel-title"><Waypoints size={20} /> Region qrafı</div>
+                <p className="muted-text">Region seçin və qrafdan obyekt açın.</p>
               </div>
               <select value={selectedRegion ?? ''} onChange={(event) => setSelectedRegionName(event.target.value)}>
                 {(data?.regions ?? []).map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
@@ -274,8 +271,7 @@ export function App() {
       {activeTab === 'mac' && (
         <section className="tab-panel mac-tab">
           <article className="panel wide-panel">
-            <div className="panel-title"><Cpu size={20} /> MAC/OUI enrichment</div>
-            <p className="muted-text">Если vendor пустой — OUI не найден в `manuf`, но MAC нормализован и источник показан. Раньше этого не было в API schema/UI, поэтому “отработка БД по MAC” визуально не проявлялась.</p>
+            <div className="panel-title"><Cpu size={20} /> MAC/OUI</div>
             <InterfaceList interfaces={macInterfaces} showDevice showVendor />
           </article>
         </section>
@@ -286,42 +282,42 @@ export function App() {
           <form className="search-card" onSubmit={submit}>
             <Search size={22} />
             <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="10.255.127.60" />
-            <button type="submit">Analyze IP</button>
+            <button type="submit">IP-ni yoxla</button>
           </form>
 
-          {summary.isLoading && <div className="panel shimmer">Загружаю summary...</div>}
-          {summary.isError && <div className="panel error">Ошибка: {(summary.error as Error).message}</div>}
+          {summary.isLoading && <div className="panel shimmer">Məlumat yüklənir...</div>}
+          {summary.isError && <div className="panel error">Xəta: {(summary.error as Error).message}</div>}
 
           {summary.data && (
             <section className="grid">
               <article className="panel wide">
-                <div className="panel-title"><Database size={20} /> NetBox Context</div>
+                <div className="panel-title"><Database size={20} /> NetBox konteksti</div>
                 <dl>
                   <dt>IP</dt><dd>{summary.data.ip}</dd>
-                  <dt>Known</dt><dd>{summary.data.netbox.known ? 'yes' : 'no'}</dd>
-                  <dt>Device</dt><dd>{summary.data.netbox.device ?? '—'}</dd>
-                  <dt>Site</dt><dd>{summary.data.netbox.site ?? '—'}</dd>
-                  <dt>Region / City</dt><dd>{summary.data.netbox.region ?? '—'} / {summary.data.netbox.city ?? '—'}</dd>
-                  <dt>Role</dt><dd>{summary.data.netbox.role ?? '—'}</dd>
+                  <dt>Məlumdur</dt><dd>{summary.data.netbox.known ? 'bəli' : 'xeyr'}</dd>
+                  <dt>Qurğu</dt><dd>{summary.data.netbox.device ?? '—'}</dd>
+                  <dt>Sahə</dt><dd>{summary.data.netbox.site ?? '—'}</dd>
+                  <dt>Region / Şəhər</dt><dd>{summary.data.netbox.region ?? '—'} / {summary.data.netbox.city ?? '—'}</dd>
+                  <dt>Rol</dt><dd>{summary.data.netbox.role ?? '—'}</dd>
                 </dl>
                 <InterfaceList interfaces={summary.data.netbox.interfaces as NetBoxInterface[]} showVendor />
               </article>
 
               <article className="panel">
-                <div className="panel-title"><Radar size={20} /> Scan</div>
+                <div className="panel-title"><Radar size={20} /> Skan</div>
                 <div className="metric">{summary.data.scan.status}</div>
-                <p>Ports: {summary.data.scan.open_ports.length ? summary.data.scan.open_ports.join(', ') : 'not scanned yet'}</p>
-                <p>OS: {summary.data.scan.os_guess ?? 'unknown'}</p>
+                <p>Portlar: {summary.data.scan.open_ports.length ? summary.data.scan.open_ports.join(', ') : 'hələ skan edilməyib'}</p>
+                <p>OS: {summary.data.scan.os_guess ?? 'bilinmir'}</p>
               </article>
 
               <article className="panel">
-                <div className="panel-title"><Activity size={20} /> Activity / {summary.data.activity.window}</div>
+                <div className="panel-title"><Activity size={20} /> Aktivlik / {summary.data.activity.window}</div>
                 <div className="cards">
-                  <span><b>{summary.data.activity.internal_connections}</b> internal</span>
-                  <span><b>{summary.data.activity.external_connections}</b> external</span>
-                  <span><b>{summary.data.activity.security_events}</b> security</span>
+                  <span><b>{summary.data.activity.internal_connections}</b> daxili</span>
+                  <span><b>{summary.data.activity.external_connections}</b> xarici</span>
+                  <span><b>{summary.data.activity.security_events}</b> təhlükəsizlik</span>
                 </div>
-                <h3>Top internal destinations</h3>
+                <h3>Əsas daxili istiqamətlər</h3>
                 <ul>
                   {summary.data.activity.top_internal_destinations.map((item) => (
                     <li key={`${item.ip}-${item.port}`}>{item.ip}:{item.port ?? '*'} — {item.count}</li>
@@ -407,7 +403,7 @@ function DeviceRow({ device, interfaceCount, selected, onSelect }: { device: Net
     <button className={`device-row ${selected ? 'selected' : ''}`} type="button" onClick={onSelect}>
       <span>
         <b>{device.name}</b>
-        <small>{emptyLabel(device.role)} · {interfaceCount} ifaces · {emptyLabel(device.primary_ip)}</small>
+        <small>{emptyLabel(device.role)} · {interfaceCount} interfeys · {emptyLabel(device.primary_ip)}</small>
       </span>
       <em className={statusClass(device.status)}>{emptyLabel(device.status)}</em>
     </button>
@@ -429,24 +425,24 @@ function DeviceDetailPanel({
 }) {
   return (
     <article className="panel detail-panel">
-      <div className="panel-title"><Database size={20} /> Device details cache</div>
-      {!selectedDevice && <p className="muted-text">Выбери девайс — подробные данные придут через cached endpoint.</p>}
-      {isLoading && <p className="muted-text">Загружаю detail...</p>}
+      <div className="panel-title"><Database size={20} /> Qurğu detalları</div>
+      {!selectedDevice && <p className="muted-text">Qurğu seçin.</p>}
+      {isLoading && <p className="muted-text">Detallar yüklənir...</p>}
       {isError && <p className="error-text">{error?.message}</p>}
       {detail && (
         <>
           <div className="cache-line">
-            <span className={detail.cache.hit ? 'badge good' : 'badge warn'}>Redis cache: {detail.cache.hit ? 'hit' : 'miss'}</span>
+            <span className={detail.cache.hit ? 'badge good' : 'badge warn'}>Keş: {detail.cache.hit ? 'hit' : 'miss'}</span>
             <code>{String(detail.cache.key ?? '')}</code>
           </div>
           <dl>
-            <dt>Name</dt><dd>{detail.name}</dd>
-            <dt>Site / Region</dt><dd>{emptyLabel(detail.site)} / {emptyLabel(detail.region)}</dd>
-            <dt>Role</dt><dd>{emptyLabel(detail.role)}</dd>
-            <dt>Type</dt><dd>{emptyLabel(detail.manufacturer)} {emptyLabel(detail.device_type)}</dd>
-            <dt>Platform</dt><dd>{emptyLabel(detail.platform)}</dd>
-            <dt>Serial</dt><dd>{emptyLabel(detail.serial)}</dd>
-            <dt>Primary IP</dt><dd>{emptyLabel(detail.primary_ip)}</dd>
+            <dt>Ad</dt><dd>{detail.name}</dd>
+            <dt>Sahə / Region</dt><dd>{emptyLabel(detail.site)} / {emptyLabel(detail.region)}</dd>
+            <dt>Rol</dt><dd>{emptyLabel(detail.role)}</dd>
+            <dt>Tip</dt><dd>{emptyLabel(detail.manufacturer)} {emptyLabel(detail.device_type)}</dd>
+            <dt>Platforma</dt><dd>{emptyLabel(detail.platform)}</dd>
+            <dt>Seriya nömrəsi</dt><dd>{emptyLabel(detail.serial)}</dd>
+            <dt>Əsas IP</dt><dd>{emptyLabel(detail.primary_ip)}</dd>
           </dl>
           <InterfaceList interfaces={detail.interfaces} showVendor />
         </>
@@ -459,7 +455,7 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   return (
     <div className="graph-canvas">
-      <svg viewBox="0 0 1000 590" role="img" aria-label="NetBox region graph">
+      <svg viewBox="0 0 1000 590" role="img" aria-label="NetBox region qrafı">
         <defs>
           <filter id="glow"><feGaussianBlur stdDeviation="4" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
@@ -476,14 +472,14 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
           </g>
         ))}
       </svg>
-      {!graph.nodes.length && <p className="muted-text">Нет данных для графа.</p>}
+      {!graph.nodes.length && <p className="muted-text">Qraf üçün məlumat yoxdur.</p>}
     </div>
   );
 }
 
 function GraphInspector({ node, onSelectDevice }: { node: GraphNode | null; onSelectDevice: (deviceId: number) => void }) {
   if (!node) {
-    return <aside className="panel inspector"><div className="panel-title"><Search size={20} /> Node inspector</div><p className="muted-text">Кликни по узлу на графе.</p></aside>;
+    return <aside className="panel inspector"><div className="panel-title"><Search size={20} /> Obyekt məlumatı</div><p className="muted-text">Qrafdan obyekt seçin.</p></aside>;
   }
   const meta = node.meta as Record<string, unknown> | undefined;
   return (
@@ -494,22 +490,22 @@ function GraphInspector({ node, onSelectDevice }: { node: GraphNode | null; onSe
           <Fragment key={key}><dt>{key}</dt><dd>{typeof value === 'object' ? JSON.stringify(value) : emptyLabel(value as string | number | boolean | null | undefined)}</dd></Fragment>
         ))}
       </dl>
-      {node.type === 'device' && meta?.id !== undefined && <button className="primary-button" onClick={() => onSelectDevice(Number(meta.id))} type="button">Открыть detail</button>}
+      {node.type === 'device' && meta?.id !== undefined && <button className="primary-button" onClick={() => onSelectDevice(Number(meta.id))} type="button">Detalları aç</button>}
     </aside>
   );
 }
 
 function InterfaceList({ interfaces, showDevice = false, showVendor = false }: { interfaces: NetBoxInterface[]; showDevice?: boolean; showVendor?: boolean }) {
-  if (!interfaces.length) return <p className="muted-text">Interfaces: none</p>;
+  if (!interfaces.length) return <p className="muted-text">İnterfeys yoxdur</p>;
   return (
     <div className="interface-table">
-      <h3>Interfaces</h3>
+      <h3>İnterfeyslər</h3>
       {interfaces.map((item) => (
         <div className="interface-row" key={item.id ?? item.name}>
           <b>{item.name}</b>
           {showDevice && <span>{emptyLabel(item.device)}</span>}
           <span>{emptyLabel(item.type)}</span>
-          <span className={item.enabled ? 'good' : 'muted'}>{item.enabled ? 'enabled' : 'disabled'}</span>
+          <span className={item.enabled ? 'good' : 'muted'}>{item.enabled ? 'aktiv' : 'deaktiv'}</span>
           <span className="mono">{emptyLabel(item.mac_address)}</span>
           {showVendor && <span>{emptyLabel(item.mac_vendor)} <small>{emptyLabel(item.mac_oui)} · {emptyLabel(item.mac_vendor_source)}</small></span>}
           <small>{emptyLabel(item.description)}</small>
