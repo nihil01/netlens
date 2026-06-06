@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.integrations.netbox.mac_vendor import (
     MacVendorResolver,
     WiresharkManufDataset,
@@ -23,15 +25,13 @@ def test_mac_vendor_resolver_uses_prefix_dataset() -> None:
     assert result.source == "prefix-dataset"
 
 
-def test_wireshark_dataset_reads_cached_json_by_oid(tmp_path) -> None:
-    cache_file = tmp_path / "manuf.json"
-    cache_file.write_text(
-        '{"created_at":"2026-06-03T20:40:34Z","data":{"001122":"Cisco Systems, Inc"}}',
-        encoding="utf-8",
-    )
+def test_wireshark_dataset_reads_memory_json_by_oid() -> None:
     dataset = WiresharkManufDataset(
-        cache_path=cache_file,
-        source_url="https://invalid.example/manuf.json",
+        source_url="memory://test-oid",
+        initial_payload={
+            "created_at": "2026-06-03T20:40:34Z",
+            "data": {"001122": "Cisco Systems, Inc"},
+        },
     )
 
     assert dataset.lookup_oid("00:11:22") == "Cisco Systems, Inc"
@@ -39,13 +39,46 @@ def test_wireshark_dataset_reads_cached_json_by_oid(tmp_path) -> None:
     assert dataset.created_at == "2026-06-03T20:40:34Z"
 
 
-def test_mac_vendor_resolver_uses_wireshark_dataset_without_manuf(tmp_path) -> None:
-    cache_file = tmp_path / "manuf.json"
-    cache_file.write_text(
-        '{"created_at":"2026-06-03T20:40:34Z","data":{"001122":"Cisco Systems, Inc"}}',
-        encoding="utf-8",
+def test_wireshark_dataset_reuses_shared_memory_payload(monkeypatch) -> None:
+    calls = 0
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            return b'{"created_at":"2026-06-03T20:40:34Z","data":{"001122":"Cisco Systems, Inc"}}'
+
+    def fake_urlopen(*args: object, **kwargs: object) -> FakeResponse:
+        nonlocal calls
+        calls += 1
+        return FakeResponse()
+
+    source_url = "https://example.invalid/manuf.json"
+    WiresharkManufDataset._shared_payloads.pop(source_url, None)
+    monkeypatch.setattr("app.integrations.netbox.mac_vendor.urllib.request.urlopen", fake_urlopen)
+
+    first_lookup = WiresharkManufDataset(source_url=source_url).lookup_oid("001122")
+    second_lookup = WiresharkManufDataset(source_url=source_url).lookup_oid("00:11:22")
+
+    assert first_lookup == "Cisco Systems, Inc"
+    assert second_lookup == "Cisco Systems, Inc"
+    assert calls == 1
+
+
+def test_mac_vendor_resolver_uses_wireshark_dataset_without_manuf() -> None:
+    resolver = MacVendorResolver(
+        dataset=WiresharkManufDataset(
+            source_url="memory://resolver-test",
+            initial_payload={
+                "created_at": "2026-06-03T20:40:34Z",
+                "data": {"001122": "Cisco Systems, Inc"},
+            },
+        )
     )
-    resolver = MacVendorResolver(dataset=WiresharkManufDataset(cache_path=cache_file))
 
     result = resolver.lookup("0011.2233.4455")
 

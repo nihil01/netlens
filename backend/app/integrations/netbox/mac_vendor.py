@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 WIRESHARK_MANUF_URL = "https://www.wireshark.org/assets/json/manuf.json"
-DEFAULT_MANUF_CACHE_PATH = Path("/var/tmp/netlens/wireshark-manuf.json")
 
 
 @dataclass(frozen=True)
@@ -49,18 +46,20 @@ class WiresharkManufDataset:
     lookup we try the longest key first, then fall back to the base OUI.
     """
 
+    _shared_payloads: ClassVar[dict[str, dict[str, Any]]] = {}
+
     def __init__(
         self,
-        cache_path: str | Path | None = None,
         source_url: str = WIRESHARK_MANUF_URL,
         timeout_seconds: float = 10.0,
+        initial_payload: dict[str, Any] | None = None,
     ) -> None:
-        configured_path = os.getenv("NETLENS_WIRESHARK_MANUF_CACHE")
-        self.cache_path = Path(cache_path or configured_path or DEFAULT_MANUF_CACHE_PATH)
         self.source_url = source_url
         self.timeout_seconds = timeout_seconds
         self.created_at: str | None = None
         self._data: dict[str, str] | None = None
+        if initial_payload is not None:
+            self._shared_payloads[self.source_url] = initial_payload
 
     def lookup_oid(self, oid: str) -> str | None:
         normalized = normalize_oid(oid)
@@ -84,11 +83,11 @@ class WiresharkManufDataset:
         if self._data is not None:
             return self._data
 
-        payload = self._read_cache()
+        payload = self._shared_payloads.get(self.source_url)
         if payload is None:
             payload = self._download_dataset()
             if payload is not None:
-                self._write_cache(payload)
+                self._shared_payloads[self.source_url] = payload
 
         if payload is None:
             self._data = {}
@@ -109,14 +108,6 @@ class WiresharkManufDataset:
         }
         return self._data
 
-    def _read_cache(self) -> dict[str, Any] | None:
-        try:
-            with self.cache_path.open("r", encoding="utf-8") as cache_file:
-                payload = json.load(cache_file)
-        except (OSError, json.JSONDecodeError):
-            return None
-        return payload if isinstance(payload, dict) else None
-
     def _download_dataset(self) -> dict[str, Any] | None:
         try:
             with urllib.request.urlopen(self.source_url, timeout=self.timeout_seconds) as response:
@@ -124,16 +115,6 @@ class WiresharkManufDataset:
         except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
             return None
         return payload if isinstance(payload, dict) else None
-
-    def _write_cache(self, payload: dict[str, Any]) -> None:
-        try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = self.cache_path.with_suffix(f"{self.cache_path.suffix}.tmp")
-            with tmp_path.open("w", encoding="utf-8") as cache_file:
-                json.dump(payload, cache_file, ensure_ascii=False)
-            tmp_path.replace(self.cache_path)
-        except OSError:
-            return
 
 
 class MacVendorResolver:
@@ -154,7 +135,10 @@ class MacVendorResolver:
     @classmethod
     def from_prefixes(cls, prefixes: dict[str, str]) -> MacVendorResolver:
         return cls(
-            dataset=WiresharkManufDataset(cache_path=os.devnull, source_url=""),
+            dataset=WiresharkManufDataset(
+                source_url="",
+                initial_payload={"created_at": None, "data": {}},
+            ),
             prefixes=prefixes,
         )
 

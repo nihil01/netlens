@@ -524,12 +524,18 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
             return <line className="graph-link" key={`${link.from}-${link.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
           })}
           {graph.nodes.map((node) => (
-            <g className={`graph-node ${selectedId === node.id ? 'selected' : ''}`} key={node.id} onClick={() => onSelect(node)} tabIndex={0}>
-              <circle cx={node.x} cy={node.y} fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 18 : 26} />
-              <foreignObject x={node.x - 16} y={node.y - 16} width="32" height="32">
+            <g
+              className={`graph-node ${selectedId === node.id ? 'selected' : ''}`}
+              key={node.id}
+              onClick={() => onSelect(node)}
+              tabIndex={0}
+              transform={`translate(${node.x} ${node.y})`}
+            >
+              <circle fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 18 : 26} />
+              <foreignObject x="-16" y="-16" width="32" height="32">
                 <div className="graph-node-icon" style={{ color: nodeColor(node.type) }}><GraphNodeIcon type={node.type} /></div>
               </foreignObject>
-              <text x={node.x} y={node.y + (node.type === 'interface' ? 42 : 50)}>{node.label}</text>
+              <text y={node.type === 'interface' ? 42 : 50}>{node.label}</text>
             </g>
           ))}
         </g>
