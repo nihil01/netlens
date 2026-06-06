@@ -79,6 +79,16 @@ class WiresharkManufDataset:
                 return vendor
         return None
 
+    def status(self) -> dict[str, Any]:
+        data = self._load_data()
+        return {
+            "source": "wireshark-manuf-json",
+            "source_url": self.source_url,
+            "created_at": self.created_at,
+            "records": len(data),
+            "cache": "memory",
+        }
+
     def _load_data(self) -> dict[str, str]:
         if self._data is not None:
             return self._data

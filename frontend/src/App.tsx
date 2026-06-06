@@ -2,21 +2,28 @@ import { Fragment, FormEvent, ReactNode, useMemo, useState, type PointerEvent, t
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
+  AlertTriangle,
   Boxes,
   Building2,
   Cable,
+  Copy,
   Cpu,
   Database,
+  Download,
+  Eye,
+  Filter,
   GitBranch,
   Layers3,
   MapPinned,
   Network,
   Radar,
+  RefreshCw,
   Search,
   Server,
   Router,
   Sparkles,
   Waypoints,
+  X,
 } from 'lucide-react';
 import {
   fetchIpSummary,
@@ -30,6 +37,8 @@ import {
 
 type MainTab = 'inventory' | 'graph' | 'ip' | 'mac';
 type GraphNodeType = 'region' | 'site' | 'device' | 'interface';
+type QuickFilter = 'all' | 'active' | 'offline' | 'unknownVendor' | 'interfaceProblems' | 'missingPrimaryIp';
+type GraphLevels = Record<GraphNodeType, boolean>;
 type GraphNode = {
   id: string;
   label: string;
@@ -73,6 +82,9 @@ export function App() {
   const [activeTab, setActiveTab] = useState<MainTab>('inventory');
   const [selectedRegionName, setSelectedRegionName] = useState<string | null>(null);
   const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null);
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [graphLevels, setGraphLevels] = useState<GraphLevels>({ region: true, site: true, device: true, interface: true });
 
   const summary = useQuery({
     queryKey: ['ip-summary', ip],
@@ -92,27 +104,9 @@ export function App() {
   });
 
   const data = inventory.data;
-  const selectedRegion = selectedRegionName ?? data?.regions[0]?.name ?? null;
+  const normalizedSearch = inventorySearch.trim().toLowerCase();
 
-  const sitesByRegion = useMemo(() => {
-    const grouped = new Map<string, NetBoxSite[]>();
-    for (const site of data?.sites ?? []) {
-      if (!site.region) continue;
-      grouped.set(site.region, [...(grouped.get(site.region) ?? []), site]);
-    }
-    return grouped;
-  }, [data?.sites]);
-
-  const devicesBySite = useMemo(() => {
-    const grouped = new Map<string, NetBoxDevice[]>();
-    for (const device of data?.devices ?? []) {
-      if (!device.site) continue;
-      grouped.set(device.site, [...(grouped.get(device.site) ?? []), device]);
-    }
-    return grouped;
-  }, [data?.devices]);
-
-  const interfacesByDevice = useMemo(() => {
+  const allInterfacesByDevice = useMemo(() => {
     const grouped = new Map<number, NetBoxInterface[]>();
     for (const item of data?.interfaces ?? []) {
       if (!item.device_id) continue;
@@ -121,27 +115,86 @@ export function App() {
     return grouped;
   }, [data?.interfaces]);
 
+  const filteredDevices = useMemo(
+    () => (data?.devices ?? []).filter((device) => devicePassesFilters(device, allInterfacesByDevice.get(device.id) ?? [], normalizedSearch, quickFilter)),
+    [allInterfacesByDevice, data?.devices, normalizedSearch, quickFilter],
+  );
+
+  const filteredInterfaces = useMemo(
+    () => (data?.interfaces ?? []).filter((item) => interfacePassesFilters(item, filteredDevices, normalizedSearch, quickFilter)),
+    [data?.interfaces, filteredDevices, normalizedSearch, quickFilter],
+  );
+
+  const filteredSites = useMemo(
+    () => (data?.sites ?? []).filter((site) => sitePassesFilters(site, filteredDevices, filteredInterfaces, normalizedSearch, quickFilter)),
+    [data?.sites, filteredDevices, filteredInterfaces, normalizedSearch, quickFilter],
+  );
+
+  const filteredRegions = useMemo(
+    () => (data?.regions ?? []).filter((region) => regionPassesFilters(region, filteredSites, filteredDevices, normalizedSearch, quickFilter)),
+    [data?.regions, filteredDevices, filteredSites, normalizedSearch, quickFilter],
+  );
+
+  const selectedRegion = selectedRegionName && filteredRegions.some((region) => region.name === selectedRegionName)
+    ? selectedRegionName
+    : filteredRegions[0]?.name ?? data?.regions[0]?.name ?? null;
+
+  const sitesByRegion = useMemo(() => {
+    const grouped = new Map<string, NetBoxSite[]>();
+    for (const site of filteredSites) {
+      if (!site.region) continue;
+      grouped.set(site.region, [...(grouped.get(site.region) ?? []), site]);
+    }
+    return grouped;
+  }, [filteredSites]);
+
+  const devicesBySite = useMemo(() => {
+    const grouped = new Map<string, NetBoxDevice[]>();
+    for (const device of filteredDevices) {
+      if (!device.site) continue;
+      grouped.set(device.site, [...(grouped.get(device.site) ?? []), device]);
+    }
+    return grouped;
+  }, [filteredDevices]);
+
+  const interfacesByDevice = useMemo(() => {
+    const grouped = new Map<number, NetBoxInterface[]>();
+    for (const item of filteredInterfaces) {
+      if (!item.device_id) continue;
+      grouped.set(item.device_id, [...(grouped.get(item.device_id) ?? []), item]);
+    }
+    return grouped;
+  }, [filteredInterfaces]);
+
   const selectedDevice = useMemo(() => {
     if (!selectedDeviceId) return null;
     return data?.devices.find((device) => device.id === selectedDeviceId) ?? null;
   }, [data?.devices, selectedDeviceId]);
 
-  const selectedRegionSites = selectedRegion ? sitesByRegion.get(selectedRegion) ?? [] : [];
-  const selectedRegionDevices = selectedRegionSites.flatMap((site) => devicesBySite.get(site.name) ?? []);
+  const selectedRegionSites = useMemo(
+    () => (selectedRegion ? sitesByRegion.get(selectedRegion) ?? [] : []),
+    [selectedRegion, sitesByRegion],
+  );
+  const selectedRegionDevices = useMemo(
+    () => selectedRegionSites.flatMap((site) => devicesBySite.get(site.name) ?? []),
+    [devicesBySite, selectedRegionSites],
+  );
   const selectedRegionInterfaceCount = selectedRegionDevices.reduce(
     (total, device) => total + (interfacesByDevice.get(device.id)?.length ?? 0),
     0,
   );
 
   const macInterfaces = useMemo(
-    () => (data?.interfaces ?? []).filter((item) => item.mac_address),
-    [data?.interfaces],
+    () => filteredInterfaces.filter((item) => item.mac_address),
+    [filteredInterfaces],
   );
 
   const graph = useMemo(
-    () => buildGraph(selectedRegion, selectedRegionSites, selectedRegionDevices, interfacesByDevice),
-    [interfacesByDevice, selectedRegion, selectedRegionDevices, selectedRegionSites],
+    () => buildGraph(selectedRegion, selectedRegionSites, selectedRegionDevices, interfacesByDevice, graphLevels),
+    [graphLevels, interfacesByDevice, selectedRegion, selectedRegionDevices, selectedRegionSites],
   );
+
+  const riskSummary = useMemo(() => buildRiskSummary(data?.devices ?? [], data?.interfaces ?? []), [data?.devices, data?.interfaces]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -177,9 +230,22 @@ export function App() {
 
       {inventory.isLoading && <div className="panel shimmer">NetBox inventarı yüklənir...</div>}
       {inventory.isError && <div className="panel error">NetBox inventar xətası: {(inventory.error as Error).message}</div>}
-      {data?.status.status !== 'ok' && (
-        <div className="panel warning">NetBox statusu: {data?.status.message ?? data?.status.status}</div>
+      {data && data.status.status !== 'ok' && (
+        <div className="panel warning">NetBox statusu: {data.status.message ?? data.status.status}</div>
       )}
+
+      <InventoryCommandBar
+        filter={quickFilter}
+        onClear={() => {
+          setInventorySearch('');
+          setQuickFilter('all');
+        }}
+        onFilterChange={setQuickFilter}
+        onSearchChange={setInventorySearch}
+        query={inventorySearch}
+        resultCount={filteredRegions.length + filteredSites.length + filteredDevices.length + filteredInterfaces.length}
+        riskSummary={riskSummary}
+      />
 
       <nav className="tabs" aria-label="NetLens bölmələri">
         <TabButton active={activeTab === 'inventory'} icon={<Boxes size={18} />} onClick={() => setActiveTab('inventory')}>İnventar</TabButton>
@@ -193,7 +259,7 @@ export function App() {
           <aside className="panel region-rail">
             <div className="panel-title"><MapPinned size={20} /> Regionlar</div>
             <div className="region-buttons">
-              {(data?.regions ?? []).map((region) => (
+              {(filteredRegions ?? []).map((region) => (
                 <button
                   className={`region-button ${region.name === selectedRegion ? 'selected' : ''}`}
                   key={region.id}
@@ -262,9 +328,10 @@ export function App() {
                 <p className="muted-text">Region seçin və qrafdan obyekt açın.</p>
               </div>
               <select value={selectedRegion ?? ''} onChange={(event) => setSelectedRegionName(event.target.value)}>
-                {(data?.regions ?? []).map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
+                {(filteredRegions ?? []).map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
               </select>
             </div>
+            <GraphLevelToggles levels={graphLevels} onChange={setGraphLevels} />
             <InventoryGraph graph={graph} selectedId={selectedGraphNode?.id} onSelect={setSelectedGraphNode} />
           </article>
           <GraphInspector node={selectedGraphNode} onSelectDevice={selectDevice} />
@@ -274,7 +341,20 @@ export function App() {
       {activeTab === 'mac' && (
         <section className="tab-panel mac-tab">
           <article className="panel wide-panel">
-            <div className="panel-title"><Cpu size={20} /> MAC/OUI</div>
+            <div className="workspace-header">
+              <div>
+                <div className="panel-title"><Cpu size={20} /> MAC/OUI</div>
+                <OuiStatus dataset={data?.oui_dataset} />
+              </div>
+              <div className="action-row">
+                <button className="ghost-button" type="button" onClick={() => navigator.clipboard?.writeText(JSON.stringify(macInterfaces, null, 2))}>
+                  <Copy size={16} /> Kopyala
+                </button>
+                <button className="ghost-button" type="button" onClick={() => downloadJson('netlens-mac-oui.json', macInterfaces)}>
+                  <Download size={16} /> JSON
+                </button>
+              </div>
+            </div>
             <InterfaceList interfaces={macInterfaces} showDevice showVendor />
           </article>
         </section>
@@ -335,13 +415,91 @@ export function App() {
   );
 }
 
+function containsValue(value: string | number | boolean | null | undefined, needle: string): boolean {
+  return needle.length === 0 || emptyLabel(value).toLowerCase().includes(needle);
+}
+
+function interfaceHasProblem(item: NetBoxInterface): boolean {
+  return item.enabled === false || (!!item.mac_address && (!item.mac_vendor || item.mac_vendor_source === 'unknown'));
+}
+
+function devicePassesFilters(device: NetBoxDevice, interfaces: NetBoxInterface[], needle: string, filter: QuickFilter): boolean {
+  const matchesSearch = [device.name, device.site, device.region, device.role, device.device_type, device.manufacturer, device.status, device.primary_ip]
+    .some((value) => containsValue(value, needle))
+    || interfaces.some((item) => interfaceMatchesSearch(item, needle));
+  if (!matchesSearch) return false;
+  if (filter === 'active') return (device.status ?? '').toLowerCase() === 'active';
+  if (filter === 'offline') return (device.status ?? '').toLowerCase() === 'offline';
+  if (filter === 'unknownVendor') return interfaces.some((item) => !!item.mac_address && (!item.mac_vendor || item.mac_vendor_source === 'unknown'));
+  if (filter === 'interfaceProblems') return interfaces.some(interfaceHasProblem);
+  if (filter === 'missingPrimaryIp') return !device.primary_ip;
+  return true;
+}
+
+function interfaceMatchesSearch(item: NetBoxInterface, needle: string): boolean {
+  return [item.name, item.device, item.type, item.mac_address, item.mac_vendor, item.mac_oui, item.description, item.mode, item.untagged_vlan]
+    .some((value) => containsValue(value, needle));
+}
+
+function interfacePassesFilters(item: NetBoxInterface, devices: NetBoxDevice[], needle: string, filter: QuickFilter): boolean {
+  const relatedDevice = devices.find((device) => device.id === item.device_id);
+  const matchesSearch = interfaceMatchesSearch(item, needle) || (relatedDevice ? containsValue(relatedDevice.name, needle) : false);
+  if (!matchesSearch) return false;
+  if (filter === 'unknownVendor') return !!item.mac_address && (!item.mac_vendor || item.mac_vendor_source === 'unknown');
+  if (filter === 'interfaceProblems') return interfaceHasProblem(item);
+  if (filter === 'active') return item.enabled !== false;
+  if (filter === 'offline') return item.enabled === false || (relatedDevice?.status ?? '').toLowerCase() === 'offline';
+  if (filter === 'missingPrimaryIp') return relatedDevice ? !relatedDevice.primary_ip : false;
+  return true;
+}
+
+function sitePassesFilters(site: NetBoxSite, devices: NetBoxDevice[], interfaces: NetBoxInterface[], needle: string, filter: QuickFilter): boolean {
+  const siteDevices = devices.filter((device) => device.site === site.name);
+  const siteInterfaces = interfaces.filter((item) => item.device && siteDevices.some((device) => device.name === item.device));
+  const matchesSearch = [site.name, site.region, site.status, site.facility, site.physical_address].some((value) => containsValue(value, needle))
+    || siteDevices.length > 0
+    || siteInterfaces.length > 0;
+  if (!matchesSearch) return false;
+  return filter === 'all' || siteDevices.length > 0 || siteInterfaces.length > 0;
+}
+
+function regionPassesFilters(region: NetBoxRegion, sites: NetBoxSite[], devices: NetBoxDevice[], needle: string, filter: QuickFilter): boolean {
+  const regionSites = sites.filter((site) => site.region === region.name);
+  const regionDevices = devices.filter((device) => device.region === region.name);
+  const matchesSearch = [region.name, region.slug, region.description].some((value) => containsValue(value, needle))
+    || regionSites.length > 0
+    || regionDevices.length > 0;
+  if (!matchesSearch) return false;
+  return filter === 'all' || regionSites.length > 0 || regionDevices.length > 0;
+}
+
+function buildRiskSummary(devices: NetBoxDevice[], interfaces: NetBoxInterface[]) {
+  return {
+    unknownVendor: interfaces.filter((item) => !!item.mac_address && (!item.mac_vendor || item.mac_vendor_source === 'unknown')).length,
+    interfaceProblems: interfaces.filter(interfaceHasProblem).length,
+    missingPrimaryIp: devices.filter((device) => !device.primary_ip).length,
+    offlineDevices: devices.filter((device) => (device.status ?? '').toLowerCase() === 'offline').length,
+  };
+}
+
+function downloadJson(filename: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function buildGraph(
   region: string | null,
   sites: NetBoxSite[],
   devices: NetBoxDevice[],
   interfacesByDevice: Map<number, NetBoxInterface[]>,
+  levels: GraphLevels,
 ): { nodes: GraphNode[]; links: GraphLink[] } {
-  if (!region) return { nodes: [], links: [] };
+  if (!region || !levels.region) return { nodes: [], links: [] };
 
   const nodes: GraphNode[] = [{ id: `region:${region}`, label: region, type: 'region', x: 720, y: 90 }];
   const links: GraphLink[] = [];
@@ -350,9 +508,12 @@ function buildGraph(
   sites.forEach((site, siteIndex) => {
     const siteX = 90 + siteSpacing * siteIndex + siteSpacing / 2;
     const siteNode: GraphNode = { id: `site:${site.id}`, label: site.name, type: 'site', x: siteX, y: 280, meta: site };
-    nodes.push(siteNode);
-    links.push({ from: `region:${region}`, to: siteNode.id });
+    if (levels.site) {
+      nodes.push(siteNode);
+      links.push({ from: `region:${region}`, to: siteNode.id });
+    }
 
+    if (!levels.device) return;
     const siteDevices = devices.filter((device) => device.site === site.name).slice(0, 8);
     const deviceSpacing = Math.min(170, 1120 / Math.max(siteDevices.length, 1));
     const startX = siteX - ((siteDevices.length - 1) * deviceSpacing) / 2;
@@ -366,8 +527,9 @@ function buildGraph(
         meta: device,
       };
       nodes.push(deviceNode);
-      links.push({ from: siteNode.id, to: deviceNode.id });
+      links.push({ from: levels.site ? siteNode.id : `region:${region}`, to: deviceNode.id });
 
+      if (!levels.interface) return;
       const ifaces = (interfacesByDevice.get(device.id) ?? []).filter((iface) => iface.mac_address).slice(0, 3);
       ifaces.forEach((iface, ifaceIndex) => {
         const ifaceNode: GraphNode = {
@@ -385,6 +547,102 @@ function buildGraph(
   });
 
   return { nodes, links };
+}
+
+const QUICK_FILTERS: Array<{ value: QuickFilter; label: string }> = [
+  { value: 'all', label: 'Hamısı' },
+  { value: 'active', label: 'Aktiv' },
+  { value: 'offline', label: 'Offline' },
+  { value: 'unknownVendor', label: 'Vendor boşdur' },
+  { value: 'interfaceProblems', label: 'İnterfeys problemi' },
+  { value: 'missingPrimaryIp', label: 'IP boşdur' },
+];
+
+const GRAPH_LEVEL_LABELS: Record<GraphNodeType, string> = {
+  region: 'Region',
+  site: 'Sahə',
+  device: 'Qurğu',
+  interface: 'İnterfeys',
+};
+
+function InventoryCommandBar({
+  filter,
+  onClear,
+  onFilterChange,
+  onSearchChange,
+  query,
+  resultCount,
+  riskSummary,
+}: {
+  filter: QuickFilter;
+  onClear: () => void;
+  onFilterChange: (filter: QuickFilter) => void;
+  onSearchChange: (query: string) => void;
+  query: string;
+  resultCount: number;
+  riskSummary: { unknownVendor: number; interfaceProblems: number; missingPrimaryIp: number; offlineDevices: number };
+}) {
+  return (
+    <section className="command-bar">
+      <div className="global-search">
+        <Search size={18} />
+        <input
+          value={query}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Hostname, IP, MAC, vendor, sahə, region..."
+        />
+        {(query || filter !== 'all') && <button type="button" onClick={onClear}><X size={16} /> Təmizlə</button>}
+      </div>
+      <div className="filter-row" aria-label="Sürətli filtrlər">
+        <Filter size={16} />
+        {QUICK_FILTERS.map((item) => (
+          <button className={filter === item.value ? 'selected' : ''} key={item.value} type="button" onClick={() => onFilterChange(item.value)}>
+            {item.label}
+          </button>
+        ))}
+        <span className="result-pill">Nəticə: {resultCount}</span>
+      </div>
+      <div className="risk-strip">
+        <RiskPill label="Unknown vendor" value={riskSummary.unknownVendor} />
+        <RiskPill label="İnterfeys" value={riskSummary.interfaceProblems} />
+        <RiskPill label="Primary IP yoxdur" value={riskSummary.missingPrimaryIp} />
+        <RiskPill label="Offline" value={riskSummary.offlineDevices} />
+      </div>
+    </section>
+  );
+}
+
+function RiskPill({ label, value }: { label: string; value: number }) {
+  return <span className={`risk-pill ${value ? 'warn' : 'good'}`}><AlertTriangle size={14} /> {label}: {value}</span>;
+}
+
+function GraphLevelToggles({ levels, onChange }: { levels: GraphLevels; onChange: (levels: GraphLevels) => void }) {
+  return (
+    <div className="level-toggles">
+      <Eye size={16} />
+      {(Object.keys(levels) as GraphNodeType[]).map((level) => (
+        <button
+          className={levels[level] ? 'selected' : ''}
+          key={level}
+          type="button"
+          onClick={() => onChange({ ...levels, [level]: !levels[level] })}
+        >
+          {GRAPH_LEVEL_LABELS[level]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function OuiStatus({ dataset }: { dataset?: { source?: string; source_url?: string; created_at?: string | null; records?: number; cache?: string } }) {
+  return (
+    <div className="oui-status">
+      <span><RefreshCw size={14} /> Mənbə: {dataset?.source ?? 'Wireshark'}</span>
+      <span>Yazılar: {dataset?.records ?? 0}</span>
+      <span>Keş: {dataset?.cache ?? 'memory'}</span>
+      <span>Yaradılıb: {dataset?.created_at ?? '—'}</span>
+    </div>
+  );
 }
 
 function TabButton({ active, children, icon, onClick }: { active: boolean; children: ReactNode; icon: ReactNode; onClick: () => void }) {
@@ -555,17 +813,55 @@ function GraphInspector({ node, onSelectDevice }: { node: GraphNode | null; onSe
     return <aside className="panel inspector"><div className="panel-title"><Search size={20} /> Obyekt məlumatı</div><p className="muted-text">Qrafdan obyekt seçin.</p></aside>;
   }
   const meta = node.meta as Record<string, unknown> | undefined;
+  const risks = nodeRisks(node);
   return (
     <aside className="panel inspector">
-      <div className="panel-title"><Search size={20} /> {node.type}: {node.label}</div>
+      <div className="panel-title"><Search size={20} /> {nodeTypeLabel(node.type)}: {node.label}</div>
+      {!!risks.length && <div className="risk-list">{risks.map((risk) => <span key={risk} className="risk-pill warn"><AlertTriangle size={14} /> {risk}</span>)}</div>}
       <dl>
-        {Object.entries(meta ?? { label: node.label }).slice(0, 12).map(([key, value]) => (
-          <Fragment key={key}><dt>{key}</dt><dd>{typeof value === 'object' ? JSON.stringify(value) : emptyLabel(value as string | number | boolean | null | undefined)}</dd></Fragment>
+        {inspectorFields(node).map(([key, value]) => (
+          <Fragment key={key}><dt>{key}</dt><dd>{value}</dd></Fragment>
         ))}
       </dl>
       {node.type === 'device' && meta?.id !== undefined && <button className="primary-button" onClick={() => onSelectDevice(Number(meta.id))} type="button">Detalları aç</button>}
     </aside>
   );
+}
+
+function nodeTypeLabel(type: GraphNodeType): string {
+  return GRAPH_LEVEL_LABELS[type];
+}
+
+function inspectorFields(node: GraphNode): Array<[string, string]> {
+  const meta = node.meta as NetBoxRegion | NetBoxSite | NetBoxDevice | NetBoxInterface | undefined;
+  if (!meta) return [['Ad', node.label]];
+  if (node.type === 'region') {
+    const item = meta as NetBoxRegion;
+    return [['Ad', item.name], ['Slug', emptyLabel(item.slug)], ['Təsvir', emptyLabel(item.description)]];
+  }
+  if (node.type === 'site') {
+    const item = meta as NetBoxSite;
+    return [['Ad', item.name], ['Region', emptyLabel(item.region)], ['Status', emptyLabel(item.status)], ['Ünvan', emptyLabel(item.physical_address ?? item.facility)]];
+  }
+  if (node.type === 'device') {
+    const item = meta as NetBoxDevice;
+    return [['Ad', item.name], ['Sahə / Region', `${emptyLabel(item.site)} / ${emptyLabel(item.region)}`], ['Rol', emptyLabel(item.role)], ['Tip', `${emptyLabel(item.manufacturer)} ${emptyLabel(item.device_type)}`], ['Status', emptyLabel(item.status)], ['Əsas IP', emptyLabel(item.primary_ip)]];
+  }
+  const item = meta as NetBoxInterface;
+  return [['Ad', item.name], ['Qurğu', emptyLabel(item.device)], ['Tip', emptyLabel(item.type)], ['Status', item.enabled ? 'aktiv' : 'deaktiv'], ['MAC', emptyLabel(item.mac_address)], ['Vendor', `${emptyLabel(item.mac_vendor)} / ${emptyLabel(item.mac_oui)}`]];
+}
+
+function nodeRisks(node: GraphNode): string[] {
+  const meta = node.meta as NetBoxDevice | NetBoxInterface | undefined;
+  if (node.type === 'device') {
+    const item = meta as NetBoxDevice | undefined;
+    return [!item?.site ? 'Sahə yoxdur' : null, !item?.primary_ip ? 'Primary IP yoxdur' : null, (item?.status ?? '').toLowerCase() === 'offline' ? 'Offline' : null].filter(Boolean) as string[];
+  }
+  if (node.type === 'interface') {
+    const item = meta as NetBoxInterface | undefined;
+    return [item?.enabled === false ? 'Deaktiv' : null, item?.mac_address && (!item.mac_vendor || item.mac_vendor_source === 'unknown') ? 'Vendor tapılmadı' : null].filter(Boolean) as string[];
+  }
+  return [];
 }
 
 function InterfaceList({ interfaces, showDevice = false, showVendor = false }: { interfaces: NetBoxInterface[]; showDevice?: boolean; showVendor?: boolean }) {

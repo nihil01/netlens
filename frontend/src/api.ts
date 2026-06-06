@@ -96,6 +96,13 @@ export type NetBoxInventory = {
   sites: NetBoxSite[];
   devices: NetBoxDevice[];
   interfaces: NetBoxInterface[];
+  oui_dataset: {
+    source?: string;
+    source_url?: string;
+    created_at?: string | null;
+    records?: number;
+    cache?: string;
+  };
   status: IntegrationStatus;
 };
 
