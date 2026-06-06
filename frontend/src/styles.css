@@ -40,6 +40,17 @@ h1 { font-size: clamp(48px, 7vw, 88px); line-height: .9; margin: 8px 0; letter-s
 code { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 4px 8px; }
 
 .tabs { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 0 18px; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); }
+.command-bar { display: grid; gap: 12px; border: 1px solid #e2e8f0; background: #ffffff; border-radius: 22px; padding: 16px; margin-bottom: 14px; box-shadow: 0 12px 34px rgba(15,23,42,.05); }
+.global-search { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; align-items: center; }
+.global-search input { width: 100%; color: #0f172a; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; padding: 12px 14px; outline: none; }
+.global-search button, .filter-row button, .level-toggles button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dbeafe; color: #1d4ed8; background: #eff6ff; border-radius: 999px; padding: 8px 11px; font-size: 12px; font-weight: 900; }
+.filter-row, .risk-strip, .level-toggles, .action-row, .oui-status, .risk-list { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filter-row button.selected, .level-toggles button.selected { color: #ffffff; background: #2563eb; border-color: #2563eb; }
+.result-pill, .risk-pill { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 900; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
+.risk-pill.warn { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.risk-pill.good { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+.oui-status { color: #64748b; font-size: 13px; }
+.oui-status span { display: inline-flex; gap: 6px; align-items: center; }
 .tab-button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #dbeafe; color: #1e293b; background: #ffffff; border-radius: 999px; padding: 11px 15px; font-weight: 900; transition: border-color .18s ease, background .18s ease; }
 .tab-button:hover { border-color: #2563eb; background: #eff6ff; }
 .tab-button.active { color: #ffffff; background: #2563eb; border-color: #2563eb; }

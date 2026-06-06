@@ -70,6 +70,7 @@ class NetBoxInventory(BaseModel):
     sites: list[NetBoxSite] = Field(default_factory=list)
     devices: list[NetBoxDevice] = Field(default_factory=list)
     interfaces: list[NetBoxInterface] = Field(default_factory=list)
+    oui_dataset: dict[str, Any] = Field(default_factory=dict)
     status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
 
 

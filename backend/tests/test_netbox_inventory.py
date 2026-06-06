@@ -63,6 +63,20 @@ def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
     assert interface.mac_oui == "00:11:22"
 
 
+def test_inventory_exposes_wireshark_oui_cache_metadata() -> None:
+    service = NetBoxService(Settings(netbox_url="https://netbox.example.com", netbox_token="token"))
+    service.mac_vendor_resolver = MacVendorResolver.from_prefixes({"00:11:22": "Cisco Systems"})
+    service.mac_vendor_resolver.dataset.lookup_oid("001122")
+
+    metadata = service._mac_vendor_dataset_status()
+
+    assert metadata["source"] == "wireshark-manuf-json"
+    assert metadata["source_url"] == ""
+    assert metadata["created_at"] is None
+    assert metadata["records"] == 0
+    assert metadata["cache"] == "memory"
+
+
 async def test_device_detail_cache_uses_device_id_key() -> None:
     cache = MemoryJsonCache()
     settings = Settings(

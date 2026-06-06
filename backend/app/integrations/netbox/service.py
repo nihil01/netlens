@@ -182,7 +182,11 @@ class NetBoxService:
             sites=[self._map_site(item) for item in sites],
             devices=[self._map_device(item) for item in devices],
             interfaces=[self._map_interface(item) for item in interfaces],
+            oui_dataset=self._mac_vendor_dataset_status(),
         )
+
+    def _mac_vendor_dataset_status(self) -> dict[str, Any]:
+        return self.mac_vendor_resolver.dataset.status()
 
     def _load_device_detail(self, device_id: int, cache_key: str) -> NetBoxDeviceDetail:
         netbox = self._connect()
