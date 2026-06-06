@@ -83,6 +83,9 @@ export type NetBoxInterface = {
   type: string | null;
   enabled: boolean | null;
   mac_address: string | null;
+  mac_vendor: string | null;
+  mac_oui: string | null;
+  mac_vendor_source: string | null;
   description: string | null;
   mode: string | null;
   untagged_vlan: string | null;

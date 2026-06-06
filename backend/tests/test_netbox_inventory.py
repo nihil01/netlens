@@ -1,4 +1,5 @@
 from app.core.config import Settings
+from app.integrations.netbox.mac_vendor import MacVendorResolver
 from app.integrations.netbox.service import NetBoxService
 
 
@@ -17,6 +18,7 @@ class MemoryJsonCache:
 
 def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
     service = NetBoxService(Settings(netbox_url="https://netbox.example.com", netbox_token="token"))
+    service.mac_vendor_resolver = MacVendorResolver.from_prefixes({"00:11:22": "Cisco Systems"})
 
     region = service._map_region({"id": 1, "name": "Azerbaijan", "slug": "az"})
     site = service._map_site(
@@ -46,6 +48,7 @@ def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
             "device": {"id": 100, "name": "SW-BAKU-01"},
             "type": {"label": "1000BASE-T"},
             "enabled": True,
+            "mac_address": "0011.2233.4455",
         }
     )
 
@@ -55,6 +58,9 @@ def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
     assert device.primary_ip == "10.1.1.10/32"
     assert not hasattr(device, "serial")
     assert interface.device_id == 100
+    assert interface.mac_address == "00:11:22:33:44:55"
+    assert interface.mac_vendor == "Cisco Systems"
+    assert interface.mac_oui == "00:11:22"
 
 
 async def test_device_detail_cache_uses_device_id_key() -> None:
