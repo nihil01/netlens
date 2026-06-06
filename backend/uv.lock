@@ -554,12 +554,6 @@ wheels = [
 ]
 
 [[package]]
-name = "manuf"
-version = "1.1.5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0a/a3/9db33765f9d962de4b113c2f07b6d5bab4521ed4feec4cb97cbf18184602/manuf-1.1.5.tar.gz", hash = "sha256:741989728c8ffd0d5c5782376c00270fcd48cf7544f58bf9492a0ef674d433cd", size = 596531, upload-time = "2022-01-08T02:07:00.88Z" }
-
-[[package]]
 name = "netlens-backend"
 version = "0.1.0"
 source = { virtual = "." }
@@ -568,7 +562,6 @@ dependencies = [
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "manuf" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pynetbox" },
@@ -592,7 +585,6 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "manuf", specifier = ">=1.1.5" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pynetbox", specifier = ">=7.7.0" },
