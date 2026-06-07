@@ -1,6 +1,8 @@
+import { motion } from 'framer-motion';
 import { Database } from 'lucide-react';
 import type { NetBoxDevice, NetBoxDeviceDetail } from '../api';
 import { emptyLabel } from '../lib/format';
+import { cn, motionPreset, ui } from '../lib/ui';
 import { InterfaceList } from './InterfaceList';
 
 export function DeviceDetailPanel({
@@ -17,18 +19,18 @@ export function DeviceDetailPanel({
   selectedDevice: NetBoxDevice | null;
 }) {
   return (
-    <article className="panel detail-panel">
-      <div className="panel-title"><Database size={20} /> Qurğu detalları</div>
-      {!selectedDevice && <p className="muted-text">Qurğu seçin.</p>}
-      {isLoading && <p className="muted-text">Detallar yüklənir...</p>}
-      {isError && <p className="error-text">{error?.message}</p>}
+    <motion.article className={ui.stickyPanel} {...motionPreset.side}>
+      <div className={ui.panelTitle}><Database size={20} /> Qurğu detalları</div>
+      {!selectedDevice && <p className={cn(ui.emptyText, 'mt-4')}>Qurğu seçin.</p>}
+      {isLoading && <p className={cn(ui.muted, 'mt-4 animate-pulse')}>Detallar yüklənir...</p>}
+      {isError && <p className={cn(ui.errorText, 'mt-4')}>{error?.message}</p>}
       {detail && (
-        <>
-          <div className="cache-line">
-            <span className={detail.cache.hit ? 'badge good' : 'badge warn'}>Keş: {detail.cache.hit ? 'hit' : 'miss'}</span>
-            <code>{String(detail.cache.key ?? '')}</code>
+        <div className="mt-4 space-y-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={detail.cache.hit ? ui.badgeGood : ui.badgeWarn}>Keş: {detail.cache.hit ? 'hit' : 'miss'}</span>
+            <code className={ui.mono}>{String(detail.cache.key ?? '')}</code>
           </div>
-          <dl>
+          <dl className={ui.dl}>
             <dt>Ad</dt><dd>{detail.name}</dd>
             <dt>Sahə / Region</dt><dd>{emptyLabel(detail.site)} / {emptyLabel(detail.region)}</dd>
             <dt>Rol</dt><dd>{emptyLabel(detail.role)}</dd>
@@ -38,8 +40,8 @@ export function DeviceDetailPanel({
             <dt>Əsas IP</dt><dd>{emptyLabel(detail.primary_ip)}</dd>
           </dl>
           <InterfaceList interfaces={detail.interfaces} showVendor />
-        </>
+        </div>
       )}
-    </article>
+    </motion.article>
   );
 }
