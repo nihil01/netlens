@@ -167,28 +167,70 @@ ul { color: #334155; padding-left: 20px; }
   opacity: 0.58;
 }
 
-.graph-node.clickable-device circle {
-  stroke: rgba(22, 163, 74, 0.28);
+.graph-node.clickable-site circle {
+  stroke: rgba(109, 40, 217, 0.3);
   stroke-width: 2;
 }
 
 .graph-node.expanded circle {
-  stroke: rgba(21, 128, 61, 0.95);
+  stroke: rgba(109, 40, 217, 0.95);
   stroke-width: 3;
+}
+
+.graph-node.expanding .graph-node-inner {
+  animation: graph-node-in 220ms ease-out both;
+}
+
+.graph-node.collapsing {
+  pointer-events: none;
+}
+
+.graph-node.collapsing .graph-node-inner {
+  animation: graph-node-out 240ms ease-in both;
 }
 
 .graph-link {
   transition: opacity 180ms ease;
 }
 
+.graph-link.expanding {
+  animation: graph-link-in 220ms ease-out both;
+}
+
+.graph-link.collapsing {
+  animation: graph-link-out 240ms ease-in both;
+}
+
 @keyframes graph-node-in {
   from {
     opacity: 0;
-    transform: scale(0.82);
+    transform: translateY(-18px) scale(0.82);
   }
 
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
+}
+
+@keyframes graph-node-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.82);
+  }
+}
+
+@keyframes graph-link-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes graph-link-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
@@ -51,7 +51,9 @@ export function App() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [graphLevels, setGraphLevels] = useState<GraphLevels>({ region: true, site: true, device: true, interface: true });
-  const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<number>>(() => new Set());
+  const [expandedSiteId, setExpandedSiteId] = useState<number | null>(null);
+  const [collapsingSiteId, setCollapsingSiteId] = useState<number | null>(null);
+  const collapseTimerRef = useRef<number | null>(null);
 
   const summary = useQuery({
     queryKey: ['ip-summary', ip],
@@ -126,18 +128,45 @@ export function App() {
     [filteredInterfaces],
   );
 
-  function toggleDeviceInterfaces(deviceId: number) {
-    setExpandedDeviceIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(deviceId)) {
-        next.delete(deviceId);
-      } else {
-        next.add(deviceId);
+  useEffect(() => {
+    return () => {
+      if (collapseTimerRef.current !== null) {
+        window.clearTimeout(collapseTimerRef.current);
       }
+    };
+  }, []);
 
-      return next;
-    });
+  function clearCollapseTimer() {
+    if (collapseTimerRef.current !== null) {
+      window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  }
+
+  function animateCollapse(siteId: number | null) {
+    clearCollapseTimer();
+
+    if (siteId === null) {
+      setCollapsingSiteId(null);
+      return;
+    }
+
+    setCollapsingSiteId(siteId);
+    collapseTimerRef.current = window.setTimeout(() => {
+      setCollapsingSiteId(null);
+      collapseTimerRef.current = null;
+    }, 240);
+  }
+
+  function toggleSiteInterfaces(siteId: number) {
+    if (expandedSiteId === siteId) {
+      animateCollapse(expandedSiteId);
+      setExpandedSiteId(null);
+      return;
+    }
+
+    animateCollapse(expandedSiteId);
+    setExpandedSiteId(siteId);
   }
 
   const graph = useMemo(
@@ -148,7 +177,8 @@ export function App() {
         selectedRegionDevices,
         interfacesByDevice,
         graphLevels,
-        expandedDeviceIds,
+        expandedSiteId,
+        collapsingSiteId,
       ),
     [
       selectedRegion,
@@ -156,7 +186,8 @@ export function App() {
       selectedRegionDevices,
       interfacesByDevice,
       graphLevels,
-      expandedDeviceIds,
+      expandedSiteId,
+      collapsingSiteId,
     ],
   );
 
@@ -297,7 +328,8 @@ export function App() {
                     value={selectedRegion ?? ''}
                     onChange={(event) => {
                       setSelectedRegionName(event.target.value);
-                      setExpandedDeviceIds(new Set());
+                      animateCollapse(expandedSiteId);
+                      setExpandedSiteId(null);
                       setSelectedGraphNode(null);
                     }}
                   >
@@ -310,8 +342,8 @@ export function App() {
               graph={graph}
               selectedNode={selectedGraphNode}
               onSelect={setSelectedGraphNode}
-              expandedDeviceIds={expandedDeviceIds}
-              onToggleDevice={toggleDeviceInterfaces}
+              expandedSiteId={expandedSiteId}
+              onToggleSite={toggleSiteInterfaces}
             />
 
           </article>
