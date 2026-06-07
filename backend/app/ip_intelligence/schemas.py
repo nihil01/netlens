@@ -1,6 +1,5 @@
 from datetime import datetime
 from typing import Any, Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -132,6 +131,43 @@ class ActivityCounterparty(BaseModel):
     count: int
 
 
+class IpSummary(BaseModel):
+    ip: str
+    netbox: NetBoxContext
+    scan: ScanContext
+    activity: ActivitySummary
+
+
+class UnifiedActivityEvent(BaseModel):
+    source_name: str
+    index: str
+    timestamp: str | None = None
+
+    source_ip: str | None = None
+    source_port: int | None = None
+
+    destination_ip: str | None = None
+    destination_port: int | None = None
+
+    protocol: str | None = None
+    action: str | None = None
+    application: str | None = None
+    rule: str | None = None
+    policy: str | None = None
+    user: str | None = None
+    domain: str | None = None
+    url: str | None = None
+
+    bytes: int | None = None
+    packets: int | None = None
+
+    direction: str | None = None
+    is_source_ip: bool = False
+    is_destination_ip: bool = False
+
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class ActivitySummary(BaseModel):
     window: str
     internal_connections: int = 0
@@ -139,11 +175,5 @@ class ActivitySummary(BaseModel):
     security_events: int = 0
     top_internal_destinations: list[ActivityCounterparty] = Field(default_factory=list)
     top_external_destinations: list[ActivityCounterparty] = Field(default_factory=list)
+    events: list[UnifiedActivityEvent] = Field(default_factory=list)
     status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
-
-
-class IpSummary(BaseModel):
-    ip: str
-    netbox: NetBoxContext
-    scan: ScanContext
-    activity: ActivitySummary
