@@ -9,6 +9,16 @@ class IntegrationStatus(BaseModel):
     message: str | None = None
 
 
+class NetBoxMacAddress(BaseModel):
+    mac_address: str
+    mac_vendor: str | None = None
+    mac_oui: str | None = None
+    mac_vendor_source: str | None = None
+    description: str | None = None
+    vlan: str | None = None
+    type: str | None = None
+
+
 class NetBoxInterface(BaseModel):
     id: int
     name: str
@@ -26,6 +36,7 @@ class NetBoxInterface(BaseModel):
     speed: int | None = None
     duplex: str | None = None
     untagged_vlan: str | None = None
+    learned_mac_addresses: list[NetBoxMacAddress] = Field(default_factory=list)
 
 
 class NetBoxDevice(BaseModel):
@@ -96,6 +107,7 @@ class NetBoxDeviceDetail(BaseModel):
 
 class NetBoxContext(BaseModel):
     known: bool
+    arp_mac_address: str | None = None
     device: str | None = None
     site: str | None = None
     region: str | None = None

@@ -85,28 +85,36 @@ dt { color: #64748b; } dd { margin: 0; color: #0f172a; overflow-wrap: anywhere; 
 h3 { color: #0f172a; margin: 16px 0 10px; }
 
 .interface-table { margin-top: 18px; overflow: auto; }
-.interface-row { display: grid; grid-template-columns: minmax(110px, 1fr) repeat(4, minmax(90px, .8fr)) minmax(150px, 1.2fr); gap: 10px; align-items: center; border-top: 1px solid #e2e8f0; padding: 11px 0; color: #334155; }
+.interface-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; align-items: start; border-top: 1px solid #e2e8f0; padding: 12px 0; color: #334155; }
+.interface-row > * { min-width: 0; overflow-wrap: anywhere; }
 .interface-row small { display: block; color: #64748b; overflow-wrap: anywhere; }
 
 .graph-tab { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
 .graph-panel select { color: #0f172a; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; }
-.graph-canvas { position: relative; min-height: 560px; border: 1px solid #dbeafe; border-radius: 24px; background: #f8fafc; overflow: hidden; }
-.graph-canvas.expanded { position: fixed; inset: 18px; z-index: 100; min-height: auto; border-radius: 28px; box-shadow: 0 30px 120px rgba(0,0,0,.62); }
-.graph-canvas svg { width: 100%; height: 680px; cursor: grab; touch-action: none; user-select: none; }
-.graph-canvas.expanded svg { height: calc(100vh - 92px); }
+.graph-canvas { position: relative; min-height: 560px; border: 1px solid #dbeafe; border-radius: 24px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); overflow: hidden; }
+.graph-canvas.expanded { position: fixed; inset: 18px; z-index: 1000; min-height: auto; border-radius: 28px; box-shadow: 0 30px 120px rgba(15,23,42,.32); background: #ffffff; }
+.graph-canvas svg { width: 100%; height: min(72vh, 760px); cursor: grab; touch-action: none; user-select: none; }
+.graph-canvas.expanded svg { height: calc(100vh - 44px); }
 .graph-canvas svg:active { cursor: grabbing; }
 .graph-toolbar { position: absolute; z-index: 2; top: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-toolbar button { border: 1px solid #bfdbfe; color: #1d4ed8; background: #eff6ff; border-radius: 999px; padding: 8px 11px; font-size: 12px; font-weight: 900; text-transform: uppercase; }
 .graph-toolbar button:hover { border-color: #2563eb; background: #dbeafe; }
 .graph-link { stroke: #94a3b8; stroke-width: 1.25; stroke-dasharray: 9 10; animation: dash 30s linear infinite; }
 .graph-node { outline: none; cursor: pointer; }
-.graph-node circle { transition: stroke-width .18s ease, opacity .18s ease, filter .18s ease; stroke: rgba(15,23,42,.14); stroke-width: 0; }
+.graph-node circle { transition: stroke-width .18s ease, opacity .18s ease, filter .18s ease; stroke: rgba(15,23,42,.22); stroke-width: 1.5px; }
 .graph-node:hover circle, .graph-node.selected circle { stroke-width: 5px; opacity: .96; }
 .graph-node-icon { width: 32px; height: 32px; display: grid; place-items: center; color: inherit; pointer-events: none; }
-.graph-node-icon svg { width: 22px; height: 22px; cursor: default; filter: drop-shadow(0 1px 4px rgba(15,23,42,.25)); }
+.graph-node-icon svg { width: 22px; height: 22px; cursor: default; filter: drop-shadow(0 1px 1px rgba(255,255,255,.9)); stroke-width: 2.7px; }
 .graph-node foreignObject { pointer-events: none; overflow: visible; }
 .graph-node text { fill: #0f172a; font-size: 13px; font-weight: 800; text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,.96); stroke-width: 5px; pointer-events: none; }
 .inspector { position: sticky; top: 76px; }
+.graph-popover { position: absolute; z-index: 3; width: min(360px, calc(100% - 32px)); transform: translate(-50%, 10px); border: 1px solid #bfdbfe; border-radius: 18px; background: rgba(255,255,255,.97); box-shadow: 0 20px 60px rgba(15,23,42,.18); padding: 14px; color: #0f172a; }
+.graph-popover strong { display: block; padding-right: 28px; margin-bottom: 10px; }
+.graph-popover dl { grid-template-columns: 112px 1fr; gap: 6px 10px; font-size: 12px; margin: 0; }
+.popover-close { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #dbeafe; border-radius: 999px; color: #1d4ed8; background: #eff6ff; }
+.learned-macs { display: grid; gap: 7px; margin-top: 12px; max-height: 260px; overflow: auto; }
+.learned-macs span { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center; }
+.compact-text { margin: 10px 0 0; font-size: 12px; }
 
 .mac-tab .wide-panel { min-height: 520px; }
 .search-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; border: 1px solid #e2e8f0; background: #ffffff; padding: 16px; border-radius: 22px; box-shadow: 0 14px 40px rgba(15,23,42,.06); margin-bottom: 18px; }

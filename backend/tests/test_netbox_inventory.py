@@ -1,6 +1,7 @@
 from app.core.config import Settings
 from app.integrations.netbox.mac_vendor import MacVendorResolver
 from app.integrations.netbox.service import NetBoxService
+from app.ip_intelligence.schemas import NetBoxMacAddress
 
 
 class MemoryJsonCache:
@@ -61,6 +62,26 @@ def test_netbox_inventory_mapping_keeps_lists_lightweight() -> None:
     assert interface.mac_address == "00:11:22:33:44:55"
     assert interface.mac_vendor == "Cisco Systems"
     assert interface.mac_oui == "00:11:22"
+
+
+def test_interface_mapping_filters_own_mac_from_learned_table() -> None:
+    service = NetBoxService(Settings(netbox_url="https://netbox.example.com", netbox_token="token"))
+    learned = NetBoxMacAddress(mac_address="AA:BB:CC:00:00:01", mac_vendor="Endpoint Vendor")
+    own = NetBoxMacAddress(mac_address="00:11:22:33:44:55", mac_vendor="Cisco")
+
+    interface = service._map_interface(
+        {
+            "id": 1000,
+            "name": "GigabitEthernet1/0/1",
+            "device": {"id": 100, "name": "SW-BAKU-01"},
+            "mac_address": "0011.2233.4455",
+        },
+        {1000: [own, learned]},
+    )
+
+    assert [item.mac_address for item in interface.learned_mac_addresses] == [
+        "AA:BB:CC:00:00:01"
+    ]
 
 
 def test_inventory_exposes_wireshark_oui_cache_metadata() -> None:
