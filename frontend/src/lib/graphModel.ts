@@ -36,13 +36,9 @@ function getInterfaceGrid(count: number): { columns: number; rows: number } {
   return { columns, rows: Math.ceil(count / columns) };
 }
 
-function getExpandedLifecycle(
-  siteId: number,
-  expandedSiteId: number | null,
-  collapsingSiteId: number | null,
-): GraphLifecycle | null {
-  if (siteId === collapsingSiteId) return 'collapsing';
-  if (siteId === expandedSiteId) return 'expanding';
+function getLifecycle(id: number, expandedId: number | null, collapsingId: number | null): GraphLifecycle | null {
+  if (id === collapsingId) return 'collapsing';
+  if (id === expandedId) return 'expanding';
   return null;
 }
 
@@ -54,6 +50,8 @@ export function buildGraph(
   levels: GraphLevels,
   expandedSiteId: number | null = null,
   collapsingSiteId: number | null = null,
+  expandedDeviceId: number | null = null,
+  collapsingDeviceId: number | null = null,
 ): InventoryGraphModel {
   if (!region || !levels.region) {
     return { nodes: [], links: [], width: 1440, height: 760 };
@@ -79,12 +77,13 @@ export function buildGraph(
 
   const siteLayouts = sites.map((site) => {
     const siteDevices = devicesBySite.get(site.name) ?? [];
-    const lifecycle = getExpandedLifecycle(site.id, expandedSiteId, collapsingSiteId);
-    const showChildren = lifecycle !== null && levels.device;
+    const siteLifecycle = getLifecycle(site.id, expandedSiteId, collapsingSiteId);
+    const showDevices = siteLifecycle !== null && levels.device;
 
-    const deviceLayouts = showChildren
+    const deviceLayouts = showDevices
       ? siteDevices.map((device) => {
-          const interfaces = levels.interface ? interfacesByDevice.get(device.id) ?? [] : [];
+          const interfaceLifecycle = getLifecycle(device.id, expandedDeviceId, collapsingDeviceId);
+          const interfaces = levels.interface && interfaceLifecycle ? interfacesByDevice.get(device.id) ?? [] : [];
           const { columns, rows } = getInterfaceGrid(interfaces.length);
           maxInterfaceRows = Math.max(maxInterfaceRows, rows);
           const interfaceBlockWidth = columns > 0 ? (columns - 1) * interfaceGapX + 180 : 0;
@@ -93,6 +92,7 @@ export function buildGraph(
             interfaces,
             columns,
             rows,
+            interfaceLifecycle,
             blockWidth: Math.max(190, interfaceBlockWidth),
           };
         })
@@ -106,7 +106,7 @@ export function buildGraph(
     const centerX = startX + laneWidth / 2;
     cursorX += laneWidth + siteGap;
 
-    return { site, lifecycle, deviceLayouts, startX, laneWidth, centerX };
+    return { site, siteLifecycle, deviceLayouts, startX, centerX };
   });
 
   const width = Math.max(1440, cursorX + 120);
@@ -118,7 +118,7 @@ export function buildGraph(
   const links: InventoryGraphModel['links'] = [];
 
   for (const siteLayout of siteLayouts) {
-    const { site, lifecycle, deviceLayouts, startX, centerX: siteX } = siteLayout;
+    const { site, siteLifecycle, deviceLayouts, startX, centerX: siteX } = siteLayout;
     const siteNode = {
       id: `site:${site.id}`,
       label: site.name,
@@ -126,7 +126,7 @@ export function buildGraph(
       x: siteX,
       y: siteY,
       siteId: site.id,
-      lifecycle: lifecycle ?? ('stable' as const),
+      lifecycle: siteLifecycle ?? ('stable' as const),
       meta: site,
     };
 
@@ -135,11 +135,11 @@ export function buildGraph(
       links.push({ from: `region:${region}`, to: siteNode.id, siteId: site.id });
     }
 
-    if (!lifecycle || !levels.device) continue;
+    if (!siteLifecycle || !levels.device) continue;
 
     let deviceCursorX = startX + sitePaddingX;
     for (const deviceLayout of deviceLayouts) {
-      const { device, interfaces, columns, blockWidth } = deviceLayout;
+      const { device, interfaces, columns, blockWidth, interfaceLifecycle } = deviceLayout;
       const deviceX = deviceCursorX + blockWidth / 2;
       const deviceNode = {
         id: `device:${device.id}`,
@@ -148,14 +148,14 @@ export function buildGraph(
         x: deviceX,
         y: deviceY,
         siteId: site.id,
-        lifecycle,
+        lifecycle: siteLifecycle,
         meta: device,
       };
 
       nodes.push(deviceNode);
-      links.push({ from: levels.site ? siteNode.id : `region:${region}`, to: deviceNode.id, siteId: site.id, lifecycle });
+      links.push({ from: levels.site ? siteNode.id : `region:${region}`, to: deviceNode.id, siteId: site.id, lifecycle: siteLifecycle });
 
-      if (levels.interface) {
+      if (interfaceLifecycle && levels.interface) {
         const gridWidth = columns > 0 ? (columns - 1) * interfaceGapX : 0;
         const interfaceStartX = deviceX - gridWidth / 2;
 
@@ -169,11 +169,11 @@ export function buildGraph(
             x: interfaceStartX + column * interfaceGapX,
             y: interfaceY + row * interfaceGapY,
             siteId: site.id,
-            lifecycle,
+            lifecycle: interfaceLifecycle,
             meta: iface,
           };
           nodes.push(ifaceNode);
-          links.push({ from: deviceNode.id, to: ifaceNode.id, siteId: site.id, lifecycle });
+          links.push({ from: deviceNode.id, to: ifaceNode.id, siteId: site.id, lifecycle: interfaceLifecycle });
         });
       }
 

@@ -1,4 +1,4 @@
-import { Fragment, useState, type CSSProperties, type PointerEvent, type WheelEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type WheelEvent } from 'react';
 import { AlertTriangle, Building2, Cable, Eye, MapPinned, Router, Search, X } from 'lucide-react';
 import type { NetBoxDevice, NetBoxInterface, NetBoxRegion, NetBoxSite } from '../api';
 import { emptyLabel } from '../lib/format';
@@ -28,7 +28,9 @@ type InventoryGraphProps = {
   selectedNode: GraphNode | null;
   onSelect: (node: GraphNode | null) => void;
   expandedSiteId?: number | null;
+  expandedDeviceId?: number | null;
   onToggleSite?: (siteId: number) => void;
+  onToggleDevice?: (deviceId: number) => void;
 };
 
 export function InventoryGraph({
@@ -36,9 +38,12 @@ export function InventoryGraph({
   selectedNode,
   onSelect,
   expandedSiteId = null,
+  expandedDeviceId = null,
   onToggleSite,
+  onToggleDevice,
 }: InventoryGraphProps) {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const graphContainerRef = useRef<HTMLDivElement | null>(null);
   const [graphMode, setGraphMode] = useState<'inline' | 'expanded'>('inline');
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -61,6 +66,38 @@ export function InventoryGraph({
     if (meta?.id !== undefined) return Number(meta.id);
     const parsed = Number(node.id.replace('site:', ''));
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function getDeviceId(node: GraphNode): number | null {
+    if (node.type !== 'device') return null;
+    const meta = node.meta as NetBoxDevice | undefined;
+    if (meta?.id !== undefined) return Number(meta.id);
+    const parsed = Number(node.id.replace('device:', ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  useEffect(() => {
+    function syncFullscreenMode() {
+      if (!document.fullscreenElement && graphMode === 'expanded') {
+        setGraphMode('inline');
+      }
+    }
+
+    document.addEventListener('fullscreenchange', syncFullscreenMode);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenMode);
+  }, [graphMode]);
+
+  async function toggleFullscreen() {
+    if (graphMode === 'expanded') {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => undefined);
+      }
+      setGraphMode('inline');
+      return;
+    }
+
+    setGraphMode('expanded');
+    await graphContainerRef.current?.requestFullscreen?.().catch(() => undefined);
   }
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
@@ -89,12 +126,12 @@ export function InventoryGraph({
   const popoverTop = selectedNode ? Math.min(Math.max((selectedNode.y / graph.height) * 100, 14), 76) : 20;
 
   return (
-    <div className={`graph-canvas ${graphMode}`}>
+    <div className={`graph-canvas ${graphMode}`} ref={graphContainerRef}>
       <div className="graph-toolbar">
         <button type="button" onClick={() => zoom(0.12)}>+</button>
         <button type="button" onClick={() => zoom(-0.12)}>−</button>
         <button type="button" onClick={resetViewport}>sıfırla</button>
-        <button type="button" onClick={() => setGraphMode((current) => (current === 'expanded' ? 'inline' : 'expanded'))}>{graphMode === 'expanded' ? 'div-ə qayıt' : 'tam pəncərə'}</button>
+        <button type="button" onClick={toggleFullscreen}>{graphMode === 'expanded' ? 'div-ə qayıt' : 'tam pəncərə'}</button>
       </div>
       <svg
         onPointerDown={onPointerDown}
@@ -127,7 +164,9 @@ export function InventoryGraph({
           })}
           {graph.nodes.map((node) => {
             const siteId = getSiteId(node);
+            const deviceId = getDeviceId(node);
             const isExpandedSite = siteId !== null && expandedSiteId === siteId;
+            const isExpandedDevice = deviceId !== null && expandedDeviceId === deviceId;
             const lifecycle = node.lifecycle ?? 'stable';
 
             return (
@@ -137,7 +176,8 @@ export function InventoryGraph({
                   lifecycle,
                   selectedId === node.id ? 'selected' : '',
                   node.type === 'site' ? 'clickable-site' : '',
-                  isExpandedSite ? 'expanded' : '',
+                  node.type === 'device' ? 'clickable-device' : '',
+                  isExpandedSite || isExpandedDevice ? 'expanded' : '',
                 ].filter(Boolean).join(' ')}
                 key={node.id}
                 onClick={(event) => {
@@ -146,6 +186,10 @@ export function InventoryGraph({
 
                   if (node.type === 'site' && siteId !== null) {
                     onToggleSite?.(siteId);
+                  }
+
+                  if (node.type === 'device' && deviceId !== null) {
+                    onToggleDevice?.(deviceId);
                   }
                 }}
                 tabIndex={0}
@@ -168,7 +212,13 @@ export function InventoryGraph({
 
                   {node.type === 'site' && (
                     <text className="graph-node-hint" y="72">
-                      {isExpandedSite ? 'interfeysləri gizlət' : 'interfeysləri göstər'}
+                      {isExpandedSite ? 'qurğuları gizlət' : 'qurğuları göstər'}
+                    </text>
+                  )}
+
+                  {node.type === 'device' && (
+                    <text className="graph-node-hint" y="72">
+                      {isExpandedDevice ? 'interfeysləri gizlət' : 'interfeysləri göstər'}
                     </text>
                   )}
                 </g>

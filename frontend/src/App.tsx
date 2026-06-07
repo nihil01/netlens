@@ -53,7 +53,10 @@ export function App() {
   const [graphLevels, setGraphLevels] = useState<GraphLevels>({ region: true, site: true, device: true, interface: true });
   const [expandedSiteId, setExpandedSiteId] = useState<number | null>(null);
   const [collapsingSiteId, setCollapsingSiteId] = useState<number | null>(null);
-  const collapseTimerRef = useRef<number | null>(null);
+  const [expandedGraphDeviceId, setExpandedGraphDeviceId] = useState<number | null>(null);
+  const [collapsingGraphDeviceId, setCollapsingGraphDeviceId] = useState<number | null>(null);
+  const siteCollapseTimerRef = useRef<number | null>(null);
+  const deviceCollapseTimerRef = useRef<number | null>(null);
 
   const summary = useQuery({
     queryKey: ['ip-summary', ip],
@@ -130,21 +133,27 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      if (collapseTimerRef.current !== null) {
-        window.clearTimeout(collapseTimerRef.current);
-      }
+      if (siteCollapseTimerRef.current !== null) window.clearTimeout(siteCollapseTimerRef.current);
+      if (deviceCollapseTimerRef.current !== null) window.clearTimeout(deviceCollapseTimerRef.current);
     };
   }, []);
 
-  function clearCollapseTimer() {
-    if (collapseTimerRef.current !== null) {
-      window.clearTimeout(collapseTimerRef.current);
-      collapseTimerRef.current = null;
+  function clearSiteCollapseTimer() {
+    if (siteCollapseTimerRef.current !== null) {
+      window.clearTimeout(siteCollapseTimerRef.current);
+      siteCollapseTimerRef.current = null;
     }
   }
 
-  function animateCollapse(siteId: number | null) {
-    clearCollapseTimer();
+  function clearDeviceCollapseTimer() {
+    if (deviceCollapseTimerRef.current !== null) {
+      window.clearTimeout(deviceCollapseTimerRef.current);
+      deviceCollapseTimerRef.current = null;
+    }
+  }
+
+  function animateSiteCollapse(siteId: number | null) {
+    clearSiteCollapseTimer();
 
     if (siteId === null) {
       setCollapsingSiteId(null);
@@ -152,21 +161,51 @@ export function App() {
     }
 
     setCollapsingSiteId(siteId);
-    collapseTimerRef.current = window.setTimeout(() => {
+    siteCollapseTimerRef.current = window.setTimeout(() => {
       setCollapsingSiteId(null);
-      collapseTimerRef.current = null;
+      siteCollapseTimerRef.current = null;
     }, 240);
   }
 
-  function toggleSiteInterfaces(siteId: number) {
+  function animateDeviceCollapse(deviceId: number | null) {
+    clearDeviceCollapseTimer();
+
+    if (deviceId === null) {
+      setCollapsingGraphDeviceId(null);
+      return;
+    }
+
+    setCollapsingGraphDeviceId(deviceId);
+    deviceCollapseTimerRef.current = window.setTimeout(() => {
+      setCollapsingGraphDeviceId(null);
+      deviceCollapseTimerRef.current = null;
+    }, 240);
+  }
+
+  function toggleSiteDevices(siteId: number) {
     if (expandedSiteId === siteId) {
-      animateCollapse(expandedSiteId);
+      animateDeviceCollapse(expandedGraphDeviceId);
+      animateSiteCollapse(expandedSiteId);
+      setExpandedGraphDeviceId(null);
       setExpandedSiteId(null);
       return;
     }
 
-    animateCollapse(expandedSiteId);
+    animateDeviceCollapse(expandedGraphDeviceId);
+    animateSiteCollapse(expandedSiteId);
+    setExpandedGraphDeviceId(null);
     setExpandedSiteId(siteId);
+  }
+
+  function toggleDeviceInterfaces(deviceId: number) {
+    if (expandedGraphDeviceId === deviceId) {
+      animateDeviceCollapse(expandedGraphDeviceId);
+      setExpandedGraphDeviceId(null);
+      return;
+    }
+
+    animateDeviceCollapse(expandedGraphDeviceId);
+    setExpandedGraphDeviceId(deviceId);
   }
 
   const graph = useMemo(
@@ -179,6 +218,8 @@ export function App() {
         graphLevels,
         expandedSiteId,
         collapsingSiteId,
+        expandedGraphDeviceId,
+        collapsingGraphDeviceId,
       ),
     [
       selectedRegion,
@@ -188,6 +229,8 @@ export function App() {
       graphLevels,
       expandedSiteId,
       collapsingSiteId,
+      expandedGraphDeviceId,
+      collapsingGraphDeviceId,
     ],
   );
 
@@ -328,7 +371,9 @@ export function App() {
                     value={selectedRegion ?? ''}
                     onChange={(event) => {
                       setSelectedRegionName(event.target.value);
-                      animateCollapse(expandedSiteId);
+                      animateDeviceCollapse(expandedGraphDeviceId);
+                      animateSiteCollapse(expandedSiteId);
+                      setExpandedGraphDeviceId(null);
                       setExpandedSiteId(null);
                       setSelectedGraphNode(null);
                     }}
@@ -343,7 +388,9 @@ export function App() {
               selectedNode={selectedGraphNode}
               onSelect={setSelectedGraphNode}
               expandedSiteId={expandedSiteId}
-              onToggleSite={toggleSiteInterfaces}
+              expandedDeviceId={expandedGraphDeviceId}
+              onToggleDevice={toggleDeviceInterfaces}
+              onToggleSite={toggleSiteDevices}
             />
 
           </article>
