@@ -31,6 +31,7 @@ type InventoryGraphProps = {
   expandedDeviceId?: number | null;
   onToggleSite?: (siteId: number) => void;
   onToggleDevice?: (deviceId: number) => void;
+  onReset?: () => void;
 };
 
 export function InventoryGraph({
@@ -41,6 +42,7 @@ export function InventoryGraph({
   expandedDeviceId = null,
   onToggleSite,
   onToggleDevice,
+  onReset,
 }: InventoryGraphProps) {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
@@ -48,8 +50,9 @@ export function InventoryGraph({
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
 
-  function resetViewport() {
+  function resetGraph() {
     setViewport({ x: 0, y: 0, scale: 1 });
+    onReset?.();
   }
 
   function moveViewport(deltaX: number, deltaY: number) {
@@ -57,7 +60,7 @@ export function InventoryGraph({
   }
 
   function zoom(delta: number) {
-    setViewport((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.28, current.scale + delta)) }));
+    setViewport((current) => ({ ...current, scale: Math.min(5, Math.max(0.18, current.scale + delta)) }));
   }
 
   function getSiteId(node: GraphNode): number | null {
@@ -118,7 +121,7 @@ export function InventoryGraph({
 
   function onWheel(event: WheelEvent<SVGSVGElement>) {
     event.preventDefault();
-    zoom(event.deltaY > 0 ? -0.08 : 0.08);
+    zoom(event.deltaY > 0 ? -0.14 : 0.14);
   }
 
   const selectedId = selectedNode?.id;
@@ -128,9 +131,9 @@ export function InventoryGraph({
   return (
     <div className={`graph-canvas ${graphMode}`} ref={graphContainerRef}>
       <div className="graph-toolbar">
-        <button type="button" onClick={() => zoom(0.12)}>+</button>
-        <button type="button" onClick={() => zoom(-0.12)}>−</button>
-        <button type="button" onClick={resetViewport}>sıfırla</button>
+        <button type="button" onClick={() => zoom(0.24)}>+</button>
+        <button type="button" onClick={() => zoom(-0.24)}>−</button>
+        <button type="button" onClick={resetGraph}>sıfırla</button>
         <button type="button" onClick={toggleFullscreen}>{graphMode === 'expanded' ? 'div-ə qayıt' : 'tam pəncərə'}</button>
       </div>
       <svg
@@ -202,11 +205,9 @@ export function InventoryGraph({
                     r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27}
                   />
 
-                  <foreignObject x="-16" y="-16" width="32" height="32">
-                    <div className="graph-node-icon" style={{ color: iconColor(node.type) }}>
-                      <GraphNodeIcon type={node.type} />
-                    </div>
-                  </foreignObject>
+                  <g className="graph-node-icon" style={{ color: iconColor(node.type) }} transform="translate(-12 -12)">
+                    <GraphNodeIcon type={node.type} />
+                  </g>
 
                   <text y={node.type === 'interface' ? 45 : 52}>{node.label}</text>
 

@@ -208,6 +208,16 @@ export function App() {
     setExpandedGraphDeviceId(deviceId);
   }
 
+  function resetGraphView() {
+    clearSiteCollapseTimer();
+    clearDeviceCollapseTimer();
+    setExpandedSiteId(null);
+    setCollapsingSiteId(null);
+    setExpandedGraphDeviceId(null);
+    setCollapsingGraphDeviceId(null);
+    setSelectedGraphNode(null);
+  }
+
   const graph = useMemo(
     () =>
       buildGraph(
@@ -390,6 +400,7 @@ export function App() {
               expandedSiteId={expandedSiteId}
               expandedDeviceId={expandedGraphDeviceId}
               onToggleDevice={toggleDeviceInterfaces}
+              onReset={resetGraphView}
               onToggleSite={toggleSiteDevices}
             />
 
