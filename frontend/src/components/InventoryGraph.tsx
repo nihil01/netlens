@@ -64,6 +64,11 @@ export function InventoryGraph({
   }
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
+    const target = event.target as Element | null;
+    if (target?.closest('.graph-node')) {
+      return;
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragStart({ x: event.clientX, y: event.clientY });
   }
