@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.integrations.netbox.service import NetBoxService
 from app.scanner.pipeline import AdvancedProfilingEngine, PipelineOrchestrator
 
 logger = logging.getLogger(__name__)

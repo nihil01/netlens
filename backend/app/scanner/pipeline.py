@@ -2,15 +2,16 @@ import asyncio
 import datetime
 import ipaddress
 import json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
-import re
 
 from icmplib import async_multiping
 from scrapli.driver.core import AsyncIOSXEDriver
 
 from app.integrations.netbox.service import NetBoxService
+from app.scanner.arp_cache import update_arp_entries
 
 COMMON_PORTS = {
     21: "FTP",
@@ -118,13 +119,14 @@ class AdvancedProfilingEngine:
 
         self.port_semaphore = asyncio.Semaphore(port_concurrency)
         self.netbox_ip_cache: dict[str, Any] = {}
+        self.arp_table_cache: dict[str, dict[str, Any]] = {}
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _load_networks(self) -> list[dict[str, Any]]:
         try:
-            with open(self.dataset_path, "r", encoding="utf-8") as file:
+            with open(self.dataset_path, encoding="utf-8") as file:
                 return json.load(file)
         except Exception:
             return []
@@ -292,7 +294,11 @@ class AdvancedProfilingEngine:
                         except Exception:
                             parsed_mac = mac_result.result
 
-                        v_data = parsed_ver[0] if isinstance(parsed_ver, list) and parsed_ver else {}
+                        v_data = (
+                            parsed_ver[0]
+                            if isinstance(parsed_ver, list) and parsed_ver
+                            else {}
+                        )
 
                         hostname = v_data.get("hostname", ip)
                         os_version = v_data.get("version", "Unknown")
@@ -500,6 +506,50 @@ class PipelineOrchestrator:
 
         return result
 
+
+    def _extract_arp_ip_mac(
+        self,
+        arp_table: Any,
+        *,
+        source: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        entries: dict[str, dict[str, Any]] = {}
+        if not isinstance(arp_table, list):
+            return entries
+
+        for row in arp_table:
+            if not isinstance(row, dict):
+                continue
+            ip = str(row.get("address") or row.get("ip") or row.get("ip_address") or "").strip()
+            mac = self._normalize_mac(
+                row.get("mac")
+                or row.get("mac_address")
+                or row.get("hardware_addr")
+                or row.get("hw_address")
+            )
+            if not ip or not mac:
+                continue
+            entries[ip] = {
+                "ip": ip,
+                "mac_address": mac,
+                "interface": row.get("interface") or row.get("port"),
+                "age": row.get("age"),
+                "source": source,
+                "raw": row,
+            }
+
+        return entries
+
+    def _refresh_arp_cache(self, enriched_data: dict[str, Any]) -> None:
+        merged: dict[str, dict[str, Any]] = {}
+        for switch_ip, data in enriched_data.items():
+            if not isinstance(data, dict) or not data.get("success"):
+                continue
+            entries = self._extract_arp_ip_mac(data.get("arp_table", []), source=switch_ip)
+            merged.update(entries)
+            update_arp_entries(list(entries.values()), source=switch_ip)
+        self.engine.arp_table_cache = merged
+
     async def run_pipeline(self) -> list[dict[str, Any]]:
         print("=" * 80)
         print("[PIPELINE] START")
@@ -519,10 +569,11 @@ class PipelineOrchestrator:
         )
 
         enriched_data = await self.phase2_enrichment()
+        self._refresh_arp_cache(enriched_data)
 
         print(
             f"[PIPELINE] enriched devices="
-            f"{len(enriched_data)}"
+            f"{len(enriched_data)} arp_entries={len(self.engine.arp_table_cache)}"
         )
 
         self.local_snapshot = await self.phase3_save_in_netbox(enriched_data)
@@ -677,10 +728,43 @@ class PipelineOrchestrator:
 
         return enrichment_results
 
+
+    def _delete_mac_address(self, mac_obj: Any) -> None:
+        try:
+            mac_obj.delete()
+        except Exception:
+            try:
+                self.engine.netbox.dcim.mac_addresses.delete([mac_obj.id])
+            except Exception:
+                pass
+
+    def _clear_device_mac_addresses(self, nb: Any, device_id: int) -> None:
+        interface_ids = {
+            getattr(interface, "id", None)
+            for interface in nb.dcim.interfaces.filter(device_id=device_id)
+        }
+        interface_ids.discard(None)
+        if not interface_ids:
+            return
+
+        try:
+            mac_addresses = list(nb.dcim.mac_addresses.all())
+        except Exception:
+            return
+
+        deleted = 0
+        for mac_obj in mac_addresses:
+            assigned_object = getattr(mac_obj, "assigned_object", None)
+            if getattr(assigned_object, "id", None) in interface_ids:
+                self._delete_mac_address(mac_obj)
+                deleted += 1
+
+        print(f"[NETBOX SYNC] cleared_mac_addresses={deleted}")
+
     async def phase3_save_in_netbox(self, enriched_data: dict[str, Any]) -> dict[str, Any]:
 
         print("=" * 80)
-        print("Enriched data: {}".format(enriched_data))
+        print(f"Enriched data: {enriched_data}")
 
         def _sync_single_device(ip: str, data: dict[str, Any]) -> None:
             if not data.get("success"):
@@ -713,7 +797,7 @@ class PipelineOrchestrator:
             learned_macs_by_interface = self._extract_learned_macs_by_interface(mac_table)
 
             print(
-                f"[NETBOX SYNC] learned_macs_by_interface="
+                "[NETBOX SYNC] learned_macs_by_interface="
             )
 
             for k, v in learned_macs_by_interface.items():
@@ -792,6 +876,8 @@ class PipelineOrchestrator:
                 except Exception:
                     pass
 
+            self._clear_device_mac_addresses(nb, device.id)
+
             existing_interfaces = {
                 intf.name: intf
                 for intf in nb.dcim.interfaces.filter(device_id=device.id)
@@ -841,8 +927,9 @@ class PipelineOrchestrator:
                         except Exception:
                             pass
                 else:
+                    nb_intf = None
                     try:
-                        nb.dcim.interfaces.create(
+                        nb_intf = nb.dcim.interfaces.create(
                             device=device.id,
                             name=intf_name,
                             type=intf_type,
@@ -889,7 +976,7 @@ class PipelineOrchestrator:
                     learned_type = learned.get("type")
 
                     description_parts = [
-                        f"Learned MAC",
+                        "Learned MAC",
                         f"switch={device.name}",
                         f"interface={intf_name}",
                     ]

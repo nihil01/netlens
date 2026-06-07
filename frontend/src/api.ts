@@ -5,6 +5,7 @@ export type IntegrationStatus = {
 
 export type NetBoxContext = {
   known: boolean;
+  arp_mac_address: string | null;
   device: string | null;
   site: string | null;
   region: string | null;
@@ -89,6 +90,17 @@ export type NetBoxInterface = {
   description: string | null;
   mode: string | null;
   untagged_vlan: string | null;
+  learned_mac_addresses: NetBoxMacAddress[];
+};
+
+export type NetBoxMacAddress = {
+  mac_address: string;
+  mac_vendor: string | null;
+  mac_oui: string | null;
+  mac_vendor_source: string | null;
+  description: string | null;
+  vlan: string | null;
+  type: string | null;
 };
 
 export type NetBoxInventory = {

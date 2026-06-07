@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, ReactNode, useMemo, useState, type PointerEvent, type WheelEvent } from 'react';
+import { Fragment, FormEvent, ReactNode, useMemo, useState, type CSSProperties, type PointerEvent, type WheelEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
@@ -48,6 +48,7 @@ type GraphNode = {
   meta?: NetBoxRegion | NetBoxSite | NetBoxDevice | NetBoxInterface;
 };
 type GraphLink = { from: string; to: string };
+type InventoryGraphModel = { nodes: GraphNode[]; links: GraphLink[]; width: number; height: number };
 
 function isLikelyIp(value: string): boolean {
   return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(value.trim());
@@ -68,10 +69,19 @@ function statusClass(status: string | null | undefined): string {
 
 function nodeColor(type: GraphNodeType): string {
   return {
-    region: '#38bdf8',
-    site: '#a78bfa',
-    device: '#22c55e',
-    interface: '#f59e0b',
+    region: '#e0f2fe',
+    site: '#ede9fe',
+    device: '#dcfce7',
+    interface: '#fef3c7',
+  }[type];
+}
+
+function iconColor(type: GraphNodeType): string {
+  return {
+    region: '#0369a1',
+    site: '#6d28d9',
+    device: '#15803d',
+    interface: '#b45309',
   }[type];
 }
 
@@ -332,7 +342,7 @@ export function App() {
               </select>
             </div>
             <GraphLevelToggles levels={graphLevels} onChange={setGraphLevels} />
-            <InventoryGraph graph={graph} selectedId={selectedGraphNode?.id} onSelect={setSelectedGraphNode} />
+            <InventoryGraph graph={graph} selectedNode={selectedGraphNode} onSelect={setSelectedGraphNode} />
           </article>
           <GraphInspector node={selectedGraphNode} onSelectDevice={selectDevice} />
         </section>
@@ -378,6 +388,7 @@ export function App() {
                 <dl>
                   <dt>IP</dt><dd>{summary.data.ip}</dd>
                   <dt>Məlumdur</dt><dd>{summary.data.netbox.known ? 'bəli' : 'xeyr'}</dd>
+                  <dt>ARP MAC</dt><dd className="mono">{summary.data.netbox.arp_mac_address ?? '—'}</dd>
                   <dt>Qurğu</dt><dd>{summary.data.netbox.device ?? '—'}</dd>
                   <dt>Sahə</dt><dd>{summary.data.netbox.site ?? '—'}</dd>
                   <dt>Region / Şəhər</dt><dd>{summary.data.netbox.region ?? '—'} / {summary.data.netbox.city ?? '—'}</dd>
@@ -498,46 +509,56 @@ function buildGraph(
   devices: NetBoxDevice[],
   interfacesByDevice: Map<number, NetBoxInterface[]>,
   levels: GraphLevels,
-): { nodes: GraphNode[]; links: GraphLink[] } {
-  if (!region || !levels.region) return { nodes: [], links: [] };
+): InventoryGraphModel {
+  if (!region || !levels.region) return { nodes: [], links: [], width: 1440, height: 760 };
 
-  const nodes: GraphNode[] = [{ id: `region:${region}`, label: region, type: 'region', x: 720, y: 90 }];
+  const maxSiteDevices = Math.max(1, ...sites.map((site) => devices.filter((device) => device.site === site.name).length));
+  const maxDeviceInterfaces = Math.max(1, ...devices.map((device) => (interfacesByDevice.get(device.id) ?? []).length));
+  const siteGap = Math.max(280, Math.min(420, 260 + maxSiteDevices * 12));
+  const deviceGap = 128;
+  const siteLaneWidth = Math.max(siteGap, maxSiteDevices * deviceGap + 160);
+  const width = Math.max(1440, sites.length * siteLaneWidth + 220);
+  const height = Math.max(820, 720 + maxDeviceInterfaces * 74);
+  const centerX = width / 2;
+
+  const nodes: GraphNode[] = [{ id: `region:${region}`, label: region, type: 'region', x: centerX, y: 92 }];
   const links: GraphLink[] = [];
-  const siteSpacing = 1260 / Math.max(sites.length, 1);
 
   sites.forEach((site, siteIndex) => {
-    const siteX = 90 + siteSpacing * siteIndex + siteSpacing / 2;
-    const siteNode: GraphNode = { id: `site:${site.id}`, label: site.name, type: 'site', x: siteX, y: 280, meta: site };
+    const siteX = 110 + siteLaneWidth * siteIndex + siteLaneWidth / 2;
+    const siteNode: GraphNode = { id: `site:${site.id}`, label: site.name, type: 'site', x: siteX, y: 270, meta: site };
     if (levels.site) {
       nodes.push(siteNode);
       links.push({ from: `region:${region}`, to: siteNode.id });
     }
 
     if (!levels.device) return;
-    const siteDevices = devices.filter((device) => device.site === site.name).slice(0, 8);
-    const deviceSpacing = Math.min(170, 1120 / Math.max(siteDevices.length, 1));
-    const startX = siteX - ((siteDevices.length - 1) * deviceSpacing) / 2;
+    const siteDevices = devices.filter((device) => device.site === site.name);
+    const startX = siteX - ((siteDevices.length - 1) * deviceGap) / 2;
+
     siteDevices.forEach((device, deviceIndex) => {
+      const deviceX = Math.max(70, startX + deviceIndex * deviceGap);
       const deviceNode: GraphNode = {
         id: `device:${device.id}`,
         label: device.name,
         type: 'device',
-        x: Math.max(65, Math.min(1375, startX + deviceIndex * deviceSpacing)),
-        y: 500,
+        x: deviceX,
+        y: 490,
         meta: device,
       };
       nodes.push(deviceNode);
       links.push({ from: levels.site ? siteNode.id : `region:${region}`, to: deviceNode.id });
 
       if (!levels.interface) return;
-      const ifaces = (interfacesByDevice.get(device.id) ?? []).filter((iface) => iface.mac_address).slice(0, 3);
+      const ifaces = interfacesByDevice.get(device.id) ?? [];
       ifaces.forEach((iface, ifaceIndex) => {
+        const sideOffset = ifaceIndex % 2 === 0 ? -34 : 34;
         const ifaceNode: GraphNode = {
           id: `interface:${iface.id}`,
           label: iface.name,
           type: 'interface',
-          x: deviceNode.x + (ifaceIndex - (ifaces.length - 1) / 2) * 74,
-          y: 710,
+          x: deviceX + sideOffset,
+          y: 680 + ifaceIndex * 74,
           meta: iface,
         };
         nodes.push(ifaceNode);
@@ -546,7 +567,7 @@ function buildGraph(
     });
   });
 
-  return { nodes, links };
+  return { nodes, links, width, height };
 }
 
 const QUICK_FILTERS: Array<{ value: QuickFilter; label: string }> = [
@@ -712,7 +733,7 @@ function DeviceDetailPanel({
   );
 }
 
-function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: GraphNode[]; links: GraphLink[] }; selectedId?: string; onSelect: (node: GraphNode) => void }) {
+function InventoryGraph({ graph, selectedNode, onSelect }: { graph: InventoryGraphModel; selectedNode: GraphNode | null; onSelect: (node: GraphNode | null) => void }) {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const [graphMode, setGraphMode] = useState<'inline' | 'expanded'>('inline');
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -727,7 +748,7 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
   }
 
   function zoom(delta: number) {
-    setViewport((current) => ({ ...current, scale: Math.min(2.4, Math.max(0.55, current.scale + delta)) }));
+    setViewport((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.28, current.scale + delta)) }));
   }
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
@@ -750,6 +771,10 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
     setGraphMode((current) => (current === 'expanded' ? 'inline' : 'expanded'));
   }
 
+  const selectedId = selectedNode?.id;
+  const popoverLeft = selectedNode ? Math.min(Math.max((selectedNode.x / graph.width) * 100, 16), 84) : 50;
+  const popoverTop = selectedNode ? Math.min(Math.max((selectedNode.y / graph.height) * 100, 14), 76) : 20;
+
   return (
     <div className={`graph-canvas ${graphMode}`}>
       <div className="graph-toolbar">
@@ -766,7 +791,7 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
         onWheel={onWheel}
         role="img"
         aria-label="NetBox region qrafı"
-        viewBox="0 0 1440 820"
+        viewBox={`0 0 ${graph.width} ${graph.height}`}
       >
         <defs>
           <filter id="glow"><feGaussianBlur stdDeviation="4" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -782,20 +807,62 @@ function InventoryGraph({ graph, selectedId, onSelect }: { graph: { nodes: Graph
             <g
               className={`graph-node ${selectedId === node.id ? 'selected' : ''}`}
               key={node.id}
-              onClick={() => onSelect(node)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect(node);
+              }}
               tabIndex={0}
               transform={`translate(${node.x} ${node.y})`}
             >
-              <circle fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 18 : 26} />
+              <circle fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27} />
               <foreignObject x="-16" y="-16" width="32" height="32">
-                <div className="graph-node-icon" style={{ color: nodeColor(node.type) }}><GraphNodeIcon type={node.type} /></div>
+                <div className="graph-node-icon" style={{ color: iconColor(node.type) }}><GraphNodeIcon type={node.type} /></div>
               </foreignObject>
-              <text y={node.type === 'interface' ? 42 : 50}>{node.label}</text>
+              <text y={node.type === 'interface' ? 45 : 52}>{node.label}</text>
             </g>
           ))}
         </g>
       </svg>
+      {selectedNode && (
+        <GraphPopover
+          node={selectedNode}
+          style={{ left: `${popoverLeft}%`, top: `${popoverTop}%` }}
+          onClose={() => onSelect(null)}
+        />
+      )}
       {!graph.nodes.length && <p className="muted-text">Qraf üçün məlumat yoxdur.</p>}
+    </div>
+  );
+}
+
+function GraphPopover({ node, onClose, style }: { node: GraphNode; onClose: () => void; style: CSSProperties }) {
+  return (
+    <aside className="graph-popover" style={style}>
+      <button aria-label="Bağla" className="popover-close" onClick={onClose} type="button"><X size={14} /></button>
+      <strong>{nodeTypeLabel(node.type)}: {node.label}</strong>
+      <dl>
+        {inspectorFields(node).slice(0, 7).map(([key, value]) => (
+          <Fragment key={key}><dt>{key}</dt><dd>{value}</dd></Fragment>
+        ))}
+      </dl>
+      {node.type === 'interface' && <LearnedMacList item={node.meta as NetBoxInterface} />}
+    </aside>
+  );
+}
+
+function LearnedMacList({ item }: { item?: NetBoxInterface }) {
+  const learned = item?.learned_mac_addresses ?? [];
+  if (!learned.length) return <p className="muted-text compact-text">Bu interfeysdə əlavə MAC yoxdur.</p>;
+  return (
+    <div className="learned-macs">
+      <b>Bu interfeysdə olan MAC-lar</b>
+      {learned.slice(0, 12).map((mac) => (
+        <span key={`${item?.id}-${mac.mac_address}`}>
+          <code>{mac.mac_address}</code>
+          <small>{emptyLabel(mac.mac_vendor)} {mac.vlan ? `· VLAN ${mac.vlan}` : ''}</small>
+        </span>
+      ))}
+      {learned.length > 12 && <small>+{learned.length - 12} MAC daha</small>}
     </div>
   );
 }
@@ -848,7 +915,7 @@ function inspectorFields(node: GraphNode): Array<[string, string]> {
     return [['Ad', item.name], ['Sahə / Region', `${emptyLabel(item.site)} / ${emptyLabel(item.region)}`], ['Rol', emptyLabel(item.role)], ['Tip', `${emptyLabel(item.manufacturer)} ${emptyLabel(item.device_type)}`], ['Status', emptyLabel(item.status)], ['Əsas IP', emptyLabel(item.primary_ip)]];
   }
   const item = meta as NetBoxInterface;
-  return [['Ad', item.name], ['Qurğu', emptyLabel(item.device)], ['Tip', emptyLabel(item.type)], ['Status', item.enabled ? 'aktiv' : 'deaktiv'], ['MAC', emptyLabel(item.mac_address)], ['Vendor', `${emptyLabel(item.mac_vendor)} / ${emptyLabel(item.mac_oui)}`]];
+  return [['Ad', item.name], ['Qurğu', emptyLabel(item.device)], ['Tip', emptyLabel(item.type)], ['Status', item.enabled ? 'aktiv' : 'deaktiv'], ['İnterfeys MAC', emptyLabel(item.mac_address)], ['Oturmuş MAC sayı', String(item.learned_mac_addresses?.length ?? 0)], ['Vendor', `${emptyLabel(item.mac_vendor)} / ${emptyLabel(item.mac_oui)}`]];
 }
 
 function nodeRisks(node: GraphNode): string[] {
@@ -876,6 +943,7 @@ function InterfaceList({ interfaces, showDevice = false, showVendor = false }: {
           <span>{emptyLabel(item.type)}</span>
           <span className={item.enabled ? 'good' : 'muted'}>{item.enabled ? 'aktiv' : 'deaktiv'}</span>
           <span className="mono">{emptyLabel(item.mac_address)}</span>
+          <span>{item.learned_mac_addresses?.length ?? 0} MAC <small>portda</small></span>
           {showVendor && <span>{emptyLabel(item.mac_vendor)} <small>{emptyLabel(item.mac_oui)} · {emptyLabel(item.mac_vendor_source)}</small></span>}
           <small>{emptyLabel(item.description)}</small>
         </div>
