@@ -1,5 +1,5 @@
 import type { NetBoxDevice, NetBoxInterface, NetBoxSite } from '../api';
-import type { GraphLevels, GraphNodeType, InventoryGraphModel } from '../types';
+import type { GraphLevels, GraphLifecycle, GraphNodeType, InventoryGraphModel } from '../types';
 
 export const GRAPH_LEVEL_LABELS: Record<GraphNodeType, string> = {
   region: 'Region',
@@ -31,14 +31,19 @@ function clamp(min: number, value: number, max: number): number {
 }
 
 function getInterfaceGrid(count: number): { columns: number; rows: number } {
-  if (count <= 0) {
-    return { columns: 0, rows: 0 };
-  }
+  if (count <= 0) return { columns: 0, rows: 0 };
+  const columns = clamp(2, Math.ceil(Math.sqrt(count * 1.35)), 7);
+  return { columns, rows: Math.ceil(count / columns) };
+}
 
-  const columns = clamp(2, Math.ceil(Math.sqrt(count * 1.6)), 8);
-  const rows = Math.ceil(count / columns);
-
-  return { columns, rows };
+function getExpandedLifecycle(
+  siteId: number,
+  expandedSiteId: number | null,
+  collapsingSiteId: number | null,
+): GraphLifecycle | null {
+  if (siteId === collapsingSiteId) return 'collapsing';
+  if (siteId === expandedSiteId) return 'expanding';
+  return null;
 }
 
 export function buildGraph(
@@ -47,172 +52,128 @@ export function buildGraph(
   devices: NetBoxDevice[],
   interfacesByDevice: Map<number, NetBoxInterface[]>,
   levels: GraphLevels,
-  expandedDeviceIds: ReadonlySet<number> = new Set(),
+  expandedSiteId: number | null = null,
+  collapsingSiteId: number | null = null,
 ): InventoryGraphModel {
   if (!region || !levels.region) {
-    return {
-      nodes: [],
-      links: [],
-      width: 1440,
-      height: 760,
-    };
+    return { nodes: [], links: [], width: 1440, height: 760 };
   }
 
   const regionY = 92;
-  const siteY = 270;
-  const deviceY = 500;
-  const interfaceY = 705;
-
-  const sitePaddingX = 120;
-  const siteGap = 130;
-  const deviceGap = 80;
-  const interfaceGapX = 150;
-  const interfaceGapY = 92;
+  const siteY = 285;
+  const deviceY = 505;
+  const interfaceY = 700;
+  const siteGap = 128;
+  const sitePaddingX = 112;
+  const deviceGap = 96;
+  const interfaceGapX = 132;
+  const interfaceGapY = 84;
 
   const devicesBySite = new Map<string, NetBoxDevice[]>();
-
   for (const site of sites) {
-    devicesBySite.set(
-      site.name,
-      devices.filter((device) => device.site === site.name),
-    );
+    devicesBySite.set(site.name, devices.filter((device) => device.site === site.name));
   }
 
-  let maxInterfaceRows = 0;
   let cursorX = 120;
+  let maxInterfaceRows = 0;
 
   const siteLayouts = sites.map((site) => {
     const siteDevices = devicesBySite.get(site.name) ?? [];
+    const lifecycle = getExpandedLifecycle(site.id, expandedSiteId, collapsingSiteId);
+    const showChildren = lifecycle !== null && levels.device;
 
-    const deviceLayouts = siteDevices.map((device) => {
-      const allInterfaces = interfacesByDevice.get(device.id) ?? [];
-      const isExpanded = levels.interface && expandedDeviceIds.has(device.id);
-      const visibleInterfaces = isExpanded ? allInterfaces : [];
-
-      const { columns, rows } = getInterfaceGrid(visibleInterfaces.length);
-
-      maxInterfaceRows = Math.max(maxInterfaceRows, rows);
-
-      const interfaceBlockWidth =
-        columns > 0 ? (columns - 1) * interfaceGapX + 260 : 0;
-
-      const blockWidth = Math.max(220, interfaceBlockWidth);
-
-      return {
-        device,
-        interfaces: visibleInterfaces,
-        columns,
-        rows,
-        blockWidth,
-      };
-    });
+    const deviceLayouts = showChildren
+      ? siteDevices.map((device) => {
+          const interfaces = levels.interface ? interfacesByDevice.get(device.id) ?? [] : [];
+          const { columns, rows } = getInterfaceGrid(interfaces.length);
+          maxInterfaceRows = Math.max(maxInterfaceRows, rows);
+          const interfaceBlockWidth = columns > 0 ? (columns - 1) * interfaceGapX + 180 : 0;
+          return {
+            device,
+            interfaces,
+            columns,
+            rows,
+            blockWidth: Math.max(190, interfaceBlockWidth),
+          };
+        })
+      : [];
 
     const devicesWidth =
       deviceLayouts.reduce((sum, item) => sum + item.blockWidth, 0) +
       Math.max(0, deviceLayouts.length - 1) * deviceGap;
-
-    const laneWidth = Math.max(420, devicesWidth + sitePaddingX * 2);
+    const laneWidth = Math.max(250, devicesWidth + sitePaddingX * 2);
     const startX = cursorX;
     const centerX = startX + laneWidth / 2;
-
     cursorX += laneWidth + siteGap;
 
-    return {
-      site,
-      siteDevices,
-      deviceLayouts,
-      laneWidth,
-      startX,
-      centerX,
-    };
+    return { site, lifecycle, deviceLayouts, startX, laneWidth, centerX };
   });
 
   const width = Math.max(1440, cursorX + 120);
-  const height = Math.max(820, interfaceY + Math.max(1, maxInterfaceRows) * interfaceGapY + 150);
+  const height = Math.max(700, interfaceY + Math.max(0, maxInterfaceRows - 1) * interfaceGapY + 150);
   const centerX = width / 2;
-
   const nodes: InventoryGraphModel['nodes'] = [
-    {
-      id: `region:${region}`,
-      label: region,
-      type: 'region',
-      x: centerX,
-      y: regionY,
-    },
+    { id: `region:${region}`, label: region, type: 'region', x: centerX, y: regionY },
   ];
-
   const links: InventoryGraphModel['links'] = [];
 
   for (const siteLayout of siteLayouts) {
-    const { site, deviceLayouts, startX, laneWidth, centerX: siteX } = siteLayout;
-
+    const { site, lifecycle, deviceLayouts, startX, centerX: siteX } = siteLayout;
     const siteNode = {
       id: `site:${site.id}`,
       label: site.name,
       type: 'site' as const,
       x: siteX,
       y: siteY,
+      siteId: site.id,
+      lifecycle: lifecycle ?? ('stable' as const),
       meta: site,
     };
 
     if (levels.site) {
       nodes.push(siteNode);
-      links.push({
-        from: `region:${region}`,
-        to: siteNode.id,
-      });
+      links.push({ from: `region:${region}`, to: siteNode.id, siteId: site.id });
     }
 
-    if (!levels.device) {
-      continue;
-    }
+    if (!lifecycle || !levels.device) continue;
 
     let deviceCursorX = startX + sitePaddingX;
-
     for (const deviceLayout of deviceLayouts) {
       const { device, interfaces, columns, blockWidth } = deviceLayout;
-
       const deviceX = deviceCursorX + blockWidth / 2;
-
       const deviceNode = {
         id: `device:${device.id}`,
         label: device.name,
         type: 'device' as const,
         x: deviceX,
         y: deviceY,
+        siteId: site.id,
+        lifecycle,
         meta: device,
       };
 
       nodes.push(deviceNode);
+      links.push({ from: levels.site ? siteNode.id : `region:${region}`, to: deviceNode.id, siteId: site.id, lifecycle });
 
-      links.push({
-        from: levels.site ? siteNode.id : `region:${region}`,
-        to: deviceNode.id,
-      });
-
-      if (levels.interface && expandedDeviceIds.has(device.id)) {
+      if (levels.interface) {
         const gridWidth = columns > 0 ? (columns - 1) * interfaceGapX : 0;
         const interfaceStartX = deviceX - gridWidth / 2;
 
         interfaces.forEach((iface, ifaceIndex) => {
           const column = columns > 0 ? ifaceIndex % columns : 0;
           const row = columns > 0 ? Math.floor(ifaceIndex / columns) : 0;
-
           const ifaceNode = {
             id: `interface:${iface.id}`,
             label: iface.name,
             type: 'interface' as const,
             x: interfaceStartX + column * interfaceGapX,
             y: interfaceY + row * interfaceGapY,
+            siteId: site.id,
+            lifecycle,
             meta: iface,
           };
-
           nodes.push(ifaceNode);
-
-          links.push({
-            from: deviceNode.id,
-            to: ifaceNode.id,
-          });
+          links.push({ from: deviceNode.id, to: ifaceNode.id, siteId: site.id, lifecycle });
         });
       }
 
@@ -220,10 +181,5 @@ export function buildGraph(
     }
   }
 
-  return {
-    nodes,
-    links,
-    width,
-    height,
-  };
+  return { nodes, links, width, height };
 }
