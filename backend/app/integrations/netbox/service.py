@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pynetbox
+from pynetbox import Api
 
 from app.cache.redis_cache import JsonRedisCache
 from app.core.config import Settings, get_settings
@@ -34,6 +35,19 @@ class NetBoxService:
     @classmethod
     def from_settings(cls) -> "NetBoxService":
         return cls(get_settings())
+
+    @classmethod
+    def build_netbox_client(cls) -> Api:
+        settings = get_settings()
+
+        pb = pynetbox.api(
+            str(settings.netbox_url).rstrip("/"),
+            token=settings.netbox_token,
+        )
+
+        pb.http_session.verify = False
+
+        return pb
 
     def _is_configured(self) -> bool:
         return bool(self.settings.netbox_url and self.settings.netbox_token)

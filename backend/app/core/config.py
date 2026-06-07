@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://netlens:netlens@localhost:5432/netlens"
     redis_url: str = "redis://localhost:6379/0"
     netbox_device_cache_ttl_seconds: int = 3600
+
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
@@ -22,13 +23,14 @@ class Settings(BaseSettings):
         ]
     )
 
+
     auth_enabled: bool = False
     keycloak_issuer_url: AnyHttpUrl | None = None
     keycloak_audience: str = "netlens-api"
 
-    netbox_url: AnyHttpUrl | None = None
-    netbox_token: str | None = None
-    netbox_verify_ssl: bool = True
+    netbox_token: str = "4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4"
+    netbox_url: str = "https://net-mgmt.taxes.gov.az:5050"
+    netbox_verify_ssl: bool = False
     netbox_timeout_seconds: float = 15.0
 
     opensearch_url: AnyHttpUrl | None = None
@@ -49,14 +51,21 @@ class Settings(BaseSettings):
     opensearch_block_actions: list[str] = Field(
         default_factory=lambda: ["blocked", "block", "deny", "denied", "drop", "dropped"]
     )
+
     internal_cidrs: list[str] = Field(
         default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
     )
 
-    scanner_schedule_enabled: bool = False
-    scanner_schedule_cron: str = "0 2 * * *"
+
+    scanner_schedule_enabled: bool = True
+    scanner_schedule_cron: str = "12 15 * * *"
     scanner_default_scope: str = "netbox-management"
     scanner_profile: Literal["safe", "normal", "aggressive"] = "safe"
+    scanner_dataset_path: str = "./scanner/net_dataset.json"
+    scanner_credentials: list[dict[str, str]] = [
+            {"login": "orxan.n", "password": "Orxan20052004123321!"},
+            {"login": "admin_evi", "password": "M!T@P@@$$2@23T"}
+        ]
 
 
 @lru_cache

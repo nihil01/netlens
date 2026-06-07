@@ -21,6 +21,7 @@ class ScannerScheduler:
         self.scheduler = AsyncIOScheduler(timezone="Asia/Baku")
 
     def start(self) -> None:
+        print("Scanner scheduler started")
         if not self.settings.scanner_schedule_enabled:
             logger.info("Scanner daily schedule is disabled")
             return
