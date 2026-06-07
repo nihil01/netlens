@@ -167,9 +167,12 @@ class NetBoxService:
     async def get_device_detail(self, device_id: int) -> NetBoxDeviceDetail:
         cache_key = f"netbox:device:{device_id}"
         cached = await self._cache_get(cache_key)
+
         if cached:
             cached["cache"] = {**cached.get("cache", {}), "hit": True, "key": cache_key}
             return NetBoxDeviceDetail.model_validate(cached)
+
+
 
         if not self._is_configured():
             return NetBoxDeviceDetail(

@@ -51,6 +51,7 @@ export function App() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [graphLevels, setGraphLevels] = useState<GraphLevels>({ region: true, site: true, device: true, interface: true });
+  const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<number>>(() => new Set());
 
   const summary = useQuery({
     queryKey: ['ip-summary', ip],
@@ -125,9 +126,38 @@ export function App() {
     [filteredInterfaces],
   );
 
+  function toggleDeviceInterfaces(deviceId: number) {
+    setExpandedDeviceIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(deviceId)) {
+        next.delete(deviceId);
+      } else {
+        next.add(deviceId);
+      }
+
+      return next;
+    });
+  }
+
   const graph = useMemo(
-    () => buildGraph(selectedRegion, selectedRegionSites, selectedRegionDevices, interfacesByDevice, graphLevels),
-    [graphLevels, interfacesByDevice, selectedRegion, selectedRegionDevices, selectedRegionSites],
+    () =>
+      buildGraph(
+        selectedRegion,
+        selectedRegionSites,
+        selectedRegionDevices,
+        interfacesByDevice,
+        graphLevels,
+        expandedDeviceIds,
+      ),
+    [
+      selectedRegion,
+      selectedRegionSites,
+      selectedRegionDevices,
+      interfacesByDevice,
+      graphLevels,
+      expandedDeviceIds,
+    ],
   );
 
   const riskSummary = useMemo(() => buildRiskSummary(data?.devices ?? [], data?.interfaces ?? []), [data?.devices, data?.interfaces]);
@@ -263,12 +293,27 @@ export function App() {
                 <div className="panel-title"><Waypoints size={20} /> Region qrafı</div>
                 <p className="muted-text">Region seçin və qrafdan obyekt açın.</p>
               </div>
-              <select value={selectedRegion ?? ''} onChange={(event) => setSelectedRegionName(event.target.value)}>
+                  <select
+                    value={selectedRegion ?? ''}
+                    onChange={(event) => {
+                      setSelectedRegionName(event.target.value);
+                      setExpandedDeviceIds(new Set());
+                      setSelectedGraphNode(null);
+                    }}
+                  >
                 {(filteredRegions ?? []).map((region) => <option key={region.id} value={region.name}>{region.name}</option>)}
               </select>
             </div>
             <GraphLevelToggles levels={graphLevels} onChange={setGraphLevels} />
-            <InventoryGraph graph={graph} selectedNode={selectedGraphNode} onSelect={setSelectedGraphNode} />
+
+            <InventoryGraph
+              graph={graph}
+              selectedNode={selectedGraphNode}
+              onSelect={setSelectedGraphNode}
+              expandedDeviceIds={expandedDeviceIds}
+              onToggleDevice={toggleDeviceInterfaces}
+            />
+
           </article>
           <GraphInspector node={selectedGraphNode} onSelectDevice={selectDevice} />
         </section>

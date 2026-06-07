@@ -146,3 +146,49 @@ ul { color: #334155; padding-left: 20px; }
   .interface-row { grid-template-columns: 1fr; }
   .workspace-header, .search-card { grid-template-columns: 1fr; display: grid; }
 }
+
+.graph-node {
+  cursor: pointer;
+}
+
+.graph-node-inner {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: graph-node-in 180ms ease-out both;
+}
+
+.graph-node text {
+  pointer-events: none;
+  user-select: none;
+}
+
+.graph-node-hint {
+  font-size: 10px;
+  opacity: 0.58;
+}
+
+.graph-node.clickable-device circle {
+  stroke: rgba(22, 163, 74, 0.28);
+  stroke-width: 2;
+}
+
+.graph-node.expanded circle {
+  stroke: rgba(21, 128, 61, 0.95);
+  stroke-width: 3;
+}
+
+.graph-link {
+  transition: opacity 180ms ease;
+}
+
+@keyframes graph-node-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

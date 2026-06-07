@@ -23,7 +23,21 @@ export function GraphLevelToggles({ levels, onChange }: { levels: GraphLevels; o
   );
 }
 
-export function InventoryGraph({ graph, selectedNode, onSelect }: { graph: InventoryGraphModel; selectedNode: GraphNode | null; onSelect: (node: GraphNode | null) => void }) {
+type InventoryGraphProps = {
+  graph: InventoryGraphModel;
+  selectedNode: GraphNode | null;
+  onSelect: (node: GraphNode | null) => void;
+  expandedDeviceIds?: ReadonlySet<number>;
+  onToggleDevice?: (deviceId: number) => void;
+};
+
+export function InventoryGraph({
+  graph,
+  selectedNode,
+  onSelect,
+  expandedDeviceIds = new Set<number>(),
+  onToggleDevice,
+}: InventoryGraphProps) {
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const [graphMode, setGraphMode] = useState<'inline' | 'expanded'>('inline');
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -40,6 +54,23 @@ export function InventoryGraph({ graph, selectedNode, onSelect }: { graph: Inven
   function zoom(delta: number) {
     setViewport((current) => ({ ...current, scale: Math.min(2.6, Math.max(0.28, current.scale + delta)) }));
   }
+
+  function getDeviceId(node: GraphNode): number | null {
+  if (node.type !== 'device') {
+    return null;
+  }
+
+  const meta = node.meta as NetBoxDevice | undefined;
+
+  if (meta?.id !== undefined) {
+    return Number(meta.id);
+  }
+
+  const rawId = node.id.replace('device:', '');
+  const parsed = Number(rawId);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -89,24 +120,56 @@ export function InventoryGraph({ graph, selectedNode, onSelect }: { graph: Inven
             if (!from || !to) return null;
             return <line className="graph-link" key={`${link.from}-${link.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
           })}
-          {graph.nodes.map((node) => (
-            <g
-              className={`graph-node ${selectedId === node.id ? 'selected' : ''}`}
-              key={node.id}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelect(node);
-              }}
-              tabIndex={0}
-              transform={`translate(${node.x} ${node.y})`}
-            >
-              <circle fill={nodeColor(node.type)} filter="url(#glow)" r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27} />
-              <foreignObject x="-16" y="-16" width="32" height="32">
-                <div className="graph-node-icon" style={{ color: iconColor(node.type) }}><GraphNodeIcon type={node.type} /></div>
-              </foreignObject>
-              <text y={node.type === 'interface' ? 45 : 52}>{node.label}</text>
-            </g>
-          ))}
+          {graph.nodes.map((node) => {
+              const deviceId = getDeviceId(node);
+              const isExpandedDevice = deviceId !== null && expandedDeviceIds.has(deviceId);
+
+              return (
+                <g
+                  className={[
+                    'graph-node',
+                    selectedId === node.id ? 'selected' : '',
+                    node.type === 'device' ? 'clickable-device' : '',
+                    isExpandedDevice ? 'expanded' : '',
+                  ].filter(Boolean).join(' ')}
+                  key={node.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(node);
+
+                    if (node.type === 'device' && deviceId !== null) {
+                      onToggleDevice?.(deviceId);
+                    }
+                  }}
+                  tabIndex={0}
+                  transform={`translate(${node.x} ${node.y})`}
+                >
+                  <g className="graph-node-inner">
+                    <circle
+                      fill={nodeColor(node.type)}
+                      filter="url(#glow)"
+                      r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27}
+                    />
+
+                    <foreignObject x="-16" y="-16" width="32" height="32">
+                      <div className="graph-node-icon" style={{ color: iconColor(node.type) }}>
+                        <GraphNodeIcon type={node.type} />
+                      </div>
+                    </foreignObject>
+
+                    <text y={node.type === 'interface' ? 45 : 52}>
+                      {node.label}
+                    </text>
+
+                    {node.type === 'device' && (
+                      <text className="graph-node-hint" y="72">
+                        {isExpandedDevice ? 'interfeysləri gizlət' : 'interfeysləri göstər'}
+                      </text>
+                    )}
+                  </g>
+                </g>
+              );
+            })}
         </g>
       </svg>
       {selectedNode && (
