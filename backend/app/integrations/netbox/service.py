@@ -199,8 +199,7 @@ class NetBoxService:
             sites=[self._map_site(item) for item in sites],
             devices=[self._map_device(item) for item in devices],
             interfaces=[
-                self._map_interface(item, learned_macs_by_interface)
-                for item in interfaces
+                self._map_interface(item, learned_macs_by_interface) for item in interfaces
             ],
             oui_dataset=self._mac_vendor_dataset_status(),
         )
@@ -214,10 +213,16 @@ class NetBoxService:
         if device is None:
             raise NetBoxDeviceNotFound(device_id)
 
-        learned_macs_by_interface = self._load_mac_addresses_by_interface(netbox, device_id)
+        raw_interfaces = list(netbox.dcim.interfaces.filter(device_id=device_id))
+        interface_ids = [
+            int(self._field(item, "id")) for item in raw_interfaces if self._field(item, "id")
+        ]
+        learned_macs_by_interface = self._load_mac_addresses_by_interface(
+            netbox,
+            interface_ids=interface_ids,
+        )
         interfaces = [
-            self._map_interface(item, learned_macs_by_interface)
-            for item in netbox.dcim.interfaces.filter(device_id=device_id)
+            self._map_interface(item, learned_macs_by_interface) for item in raw_interfaces
         ]
         return self._map_device_detail(device, interfaces, cache_key)
 
@@ -232,33 +237,46 @@ class NetBoxService:
         interfaces = []
         if device and self._field(device, "id"):
             device_id = int(self._field(device, "id"))
-            learned_macs_by_interface = self._load_mac_addresses_by_interface(netbox, device_id)
+            raw_interfaces = list(netbox.dcim.interfaces.filter(device_id=device_id))
+            interface_ids = [
+                int(self._field(item, "id")) for item in raw_interfaces if self._field(item, "id")
+            ]
+            learned_macs_by_interface = self._load_mac_addresses_by_interface(
+                netbox,
+                interface_ids=interface_ids,
+            )
             interfaces = [
                 self._map_interface(item, learned_macs_by_interface).model_dump()
-                for item in netbox.dcim.interfaces.filter(device_id=device_id)
+                for item in raw_interfaces
             ]
 
         return self._map_context(ip_object, device, interfaces)
-
 
     def _load_mac_addresses_by_interface(
         self,
         netbox: pynetbox.core.api.Api,
         device_id: int | None = None,
+        interface_ids: list[int] | None = None,
     ) -> dict[int, list[NetBoxMacAddress]]:
         grouped: dict[int, list[NetBoxMacAddress]] = defaultdict(list)
 
         try:
-            mac_addresses = list(netbox.dcim.mac_addresses.all())
+            mac_addresses = list(
+                self._iter_mac_addresses(netbox, device_id=device_id, interface_ids=interface_ids)
+            )
         except Exception:
             return grouped
 
+        allowed_interface_ids = set(interface_ids or [])
         for item in mac_addresses:
             assigned = self._field(item, "assigned_object")
-            interface_id = self._field(assigned, "id")
+            interface_id = self._field(assigned, "id") or self._field(item, "assigned_object_id")
             assigned_device = self._field(assigned, "device") if assigned else None
 
             if not interface_id:
+                continue
+            interface_id = int(interface_id)
+            if allowed_interface_ids and interface_id not in allowed_interface_ids:
                 continue
             if device_id is not None and self._field(assigned_device, "id") != device_id:
                 continue
@@ -269,7 +287,7 @@ class NetBoxService:
 
             mac_info = self.mac_vendor_resolver.lookup(str(mac))
             description = self._field(item, "description")
-            grouped[int(interface_id)].append(
+            grouped[interface_id].append(
                 NetBoxMacAddress(
                     mac_address=mac_info.mac_address,
                     mac_vendor=mac_info.vendor,
@@ -282,6 +300,49 @@ class NetBoxService:
             )
 
         return grouped
+
+    def _iter_mac_addresses(
+        self,
+        netbox: pynetbox.core.api.Api,
+        *,
+        device_id: int | None = None,
+        interface_ids: list[int] | None = None,
+    ) -> list[Any]:
+        if interface_ids is not None:
+            if not interface_ids:
+                return []
+            return self._filter_mac_addresses_for_interfaces(netbox, interface_ids)
+
+        mac_addresses = list(netbox.dcim.mac_addresses.all())
+        if device_id is None:
+            return mac_addresses
+        return mac_addresses
+
+    def _filter_mac_addresses_for_interfaces(
+        self,
+        netbox: pynetbox.core.api.Api,
+        interface_ids: list[int],
+    ) -> list[Any]:
+        unique_ids = sorted(set(interface_ids))
+        try:
+            return list(
+                netbox.dcim.mac_addresses.filter(
+                    assigned_object_type="dcim.interface",
+                    assigned_object_id=unique_ids,
+                )
+            )
+        except Exception:
+            results: list[Any] = []
+            for interface_id in unique_ids:
+                results.extend(
+                    list(
+                        netbox.dcim.mac_addresses.filter(
+                            assigned_object_type="dcim.interface",
+                            assigned_object_id=interface_id,
+                        )
+                    )
+                )
+            return results
 
     def _find_ip_address(self, netbox: pynetbox.core.api.Api, ip: str) -> Any | None:
         for item in netbox.ipam.ip_addresses.filter(q=ip):
@@ -406,7 +467,8 @@ class NetBoxService:
         )
 
     def _map_device_detail(
-        self, device: Any, interfaces: list[NetBoxInterface], cache_key: str) -> NetBoxDeviceDetail:
+        self, device: Any, interfaces: list[NetBoxInterface], cache_key: str
+    ) -> NetBoxDeviceDetail:
         basic = self._map_device(device)
         return NetBoxDeviceDetail(
             id=basic.id,
@@ -498,11 +560,8 @@ class NetBoxService:
         if isinstance(value, dict):
             return value.get("display") or value.get("address") or value.get("name")
         return (
-            getattr(value, "display", None)
-            or getattr(value, "address", None)
-            or cls._name(value)
+            getattr(value, "display", None) or getattr(value, "address", None) or cls._name(value)
         )
-
 
     @staticmethod
     def _description_token(description: str | None, key: str) -> str | None:
@@ -512,7 +571,7 @@ class NetBoxService:
         for part in str(description).split("|"):
             value = part.strip()
             if value.startswith(marker):
-                return value[len(marker):].strip() or None
+                return value[len(marker) :].strip() or None
         return None
 
     @classmethod

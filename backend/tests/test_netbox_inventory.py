@@ -79,9 +79,7 @@ def test_interface_mapping_filters_own_mac_from_learned_table() -> None:
         {1000: [own, learned]},
     )
 
-    assert [item.mac_address for item in interface.learned_mac_addresses] == [
-        "AA:BB:CC:00:00:01"
-    ]
+    assert [item.mac_address for item in interface.learned_mac_addresses] == ["AA:BB:CC:00:00:01"]
 
 
 def test_inventory_exposes_wireshark_oui_cache_metadata() -> None:
@@ -125,3 +123,78 @@ async def test_device_detail_cache_uses_device_id_key() -> None:
     assert cached is not None
     assert cached["id"] == 100
     assert cached["serial"] == "FOC123"
+
+
+class FakeEndpoint:
+    def __init__(self, items=None, get_items=None, fail_all=False) -> None:
+        self.items = items or []
+        self.get_items = get_items or {}
+        self.fail_all = fail_all
+        self.all_calls = 0
+        self.filter_calls: list[dict] = []
+
+    def all(self):
+        self.all_calls += 1
+        if self.fail_all:
+            raise AssertionError("mac_addresses.all must not be used for device detail")
+        return self.items
+
+    def filter(self, **kwargs):
+        self.filter_calls.append(kwargs)
+        assigned_ids = kwargs.get("assigned_object_id")
+        if assigned_ids is None:
+            return self.items
+        if isinstance(assigned_ids, list):
+            allowed = set(assigned_ids)
+        else:
+            allowed = {assigned_ids}
+        return [item for item in self.items if item.get("assigned_object_id") in allowed]
+
+    def get(self, item_id):
+        return self.get_items.get(item_id)
+
+
+class FakeDcim:
+    def __init__(self, *, devices, interfaces, mac_addresses) -> None:
+        self.devices = devices
+        self.interfaces = interfaces
+        self.mac_addresses = mac_addresses
+
+
+class FakeNetBox:
+    def __init__(self, dcim) -> None:
+        self.dcim = dcim
+
+
+def test_device_detail_loads_macs_only_for_selected_device_interfaces() -> None:
+    service = NetBoxService(Settings(netbox_url="https://netbox.example.com", netbox_token="token"))
+    device = {"id": 100, "name": "SW-BAKU-01", "site": {"name": "Baku HQ"}}
+    interfaces = [
+        {"id": 1000, "name": "Gi1/0/1", "device": {"id": 100, "name": "SW-BAKU-01"}},
+        {"id": 1001, "name": "Gi1/0/2", "device": {"id": 100, "name": "SW-BAKU-01"}},
+    ]
+    macs = [
+        {"assigned_object_id": 1000, "mac_address": "AA:BB:CC:00:00:01"},
+        {"assigned_object_id": 9999, "mac_address": "AA:BB:CC:00:00:FF"},
+    ]
+    mac_endpoint = FakeEndpoint(macs, fail_all=True)
+    netbox = FakeNetBox(
+        FakeDcim(
+            devices=FakeEndpoint(get_items={100: device}),
+            interfaces=FakeEndpoint(interfaces),
+            mac_addresses=mac_endpoint,
+        )
+    )
+    service.netbox = netbox  # type: ignore[assignment]
+
+    detail = service._load_device_detail(100, "netbox:device:100")
+
+    assert mac_endpoint.all_calls == 0
+    assert mac_endpoint.filter_calls == [
+        {"assigned_object_type": "dcim.interface", "assigned_object_id": [1000, 1001]}
+    ]
+    assert [item.name for item in detail.interfaces] == ["Gi1/0/1", "Gi1/0/2"]
+    assert [item.mac_address for item in detail.interfaces[0].learned_mac_addresses] == [
+        "AA:BB:CC:00:00:01"
+    ]
+    assert detail.interfaces[1].learned_mac_addresses == []
