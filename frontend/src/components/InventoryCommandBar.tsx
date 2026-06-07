@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Filter, Search, X } from 'lucide-react';
 import type { QuickFilter, RiskSummary } from '../types';
-import { cn, motionPreset, ui } from '../lib/ui';
+import { cn, ui } from '../lib/ui';
 import { RiskPill } from './common';
 
 const QUICK_FILTERS: Array<{ value: QuickFilter; label: string }> = [
@@ -31,8 +31,8 @@ export function InventoryCommandBar({
   riskSummary: RiskSummary;
 }) {
   return (
-    <motion.section className={cn(ui.panel, 'space-y-4')} {...motionPreset.panel}>
-      <div className={ui.searchBox}>
+    <motion.section className={cn(ui.panel, 'space-y-4')} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+      <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
         <Search className="text-blue-600" size={18} />
         <input
           className="min-w-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
@@ -42,17 +42,15 @@ export function InventoryCommandBar({
         />
         {(query || filter !== 'all') && <button className={ui.ghostButton} type="button" onClick={onClear}><X size={16} /> Təmizlə</button>}
       </div>
-
       <div className="flex flex-wrap items-center gap-2" aria-label="Sürətli filtrlər">
-        <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-700"><Filter size={16} /> Filtrlər</span>
+        <Filter className="text-blue-600" size={16} />
         {QUICK_FILTERS.map((item) => (
           <button className={cn(ui.pillButton, filter === item.value && ui.selectedPill)} key={item.value} type="button" onClick={() => onFilterChange(item.value)}>
             {item.label}
           </button>
         ))}
-        <span className={ui.countBadge}>Nəticə: {resultCount}</span>
+        <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-black uppercase text-slate-600">Nəticə: {resultCount}</span>
       </div>
-
       <div className="flex flex-wrap gap-2">
         <RiskPill label="Unknown vendor" value={riskSummary.unknownVendor} />
         <RiskPill label="İnterfeys" value={riskSummary.interfaceProblems} />

@@ -5,7 +5,7 @@ import { AlertTriangle, Building2, Cable, Eye, MapPinned, Router, Search, X } fr
 import type { NetBoxDevice, NetBoxInterface, NetBoxRegion, NetBoxSite } from '../api';
 import { emptyLabel } from '../lib/format';
 import { GRAPH_LEVEL_LABELS, iconColor, nodeColor } from '../lib/graphModel';
-import { cn, motionPreset, ui } from '../lib/ui';
+import { cn, ui } from '../lib/ui';
 import type { GraphLevels, GraphNode, GraphNodeType, InventoryGraphModel } from '../types';
 
 export function GraphLevelToggles({ levels, onChange }: { levels: GraphLevels; onChange: (levels: GraphLevels) => void }) {
@@ -108,7 +108,7 @@ export function InventoryGraph({
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
     const target = event.target as Element | null;
-    if (target?.closest('[data-graph-node="true"]')) return;
+    if (target?.closest('.graph-node')) return;
 
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragStart({ x: event.clientX, y: event.clientY });
@@ -131,17 +131,22 @@ export function InventoryGraph({
 
   const canvas = (
     <div
-      className={cn(ui.graphCanvasBase, graphMode === 'expanded' ? ui.graphCanvasExpanded : ui.graphCanvasInline)}
+      className={cn(
+        'graph-canvas overflow-hidden bg-gradient-to-b from-white to-slate-50',
+        graphMode === 'expanded'
+          ? '!fixed !inset-0 !z-[1000] !m-0 !h-screen !w-screen min-h-0 rounded-none border-0 bg-white shadow-2xl'
+          : 'relative min-h-[560px] rounded-[28px] border border-blue-100',
+      )}
       ref={graphContainerRef}
     >
-      <div className={ui.graphToolbar}>
+      <div className="absolute right-4 top-4 z-10 flex flex-wrap gap-2">
         <button className={ui.pillButton} type="button" onClick={() => zoom(0.24)}>+</button>
         <button className={ui.pillButton} type="button" onClick={() => zoom(-0.24)}>−</button>
         <button className={ui.pillButton} type="button" onClick={resetGraph}>sıfırla</button>
         <button className={ui.pillButton} type="button" onClick={toggleFullscreen}>{graphMode === 'expanded' ? 'div-ə qayıt' : 'tam pəncərə'}</button>
       </div>
       <svg
-        className={cn(ui.graphSvg, graphMode === 'expanded' ? 'h-[100vh]' : 'h-[min(72vh,760px)]')}
+        className={cn('w-full cursor-grab touch-none select-none active:cursor-grabbing', graphMode === 'expanded' ? 'h-[100vh]' : 'h-[min(72vh,760px)]')}
         onPointerDown={onPointerDown}
         onPointerLeave={() => setDragStart(null)}
         onPointerMove={onPointerMove}
@@ -186,8 +191,7 @@ export function InventoryGraph({
 
             return (
               <motion.g
-                className={cn('outline-none', (node.type === 'site' || node.type === 'device') && 'cursor-pointer')}
-                data-graph-node="true"
+                className={cn('graph-node outline-none', (node.type === 'site' || node.type === 'device') && 'cursor-pointer')}
                 key={node.id}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -250,13 +254,13 @@ export function InventoryGraph({
 function GraphPopover({ node, onClose, style }: { node: GraphNode; onClose: () => void; style: CSSProperties }) {
   return (
     <motion.aside
-      className={ui.graphPopover}
+      className="absolute z-20 w-[min(360px,calc(100%-32px))] rounded-3xl border border-blue-200 bg-white/95 p-4 text-slate-900 shadow-2xl backdrop-blur"
       style={{ ...style, transform: 'translate(-50%, 10px)' }}
       initial={{ opacity: 0, y: 8, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.18 }}
     >
-      <button aria-label="Bağla" className={cn(ui.iconButton, 'absolute right-3 top-3 h-7 w-7')} onClick={onClose} type="button"><X size={14} /></button>
+      <button aria-label="Bağla" className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full border border-blue-100 bg-blue-50 text-blue-700" onClick={onClose} type="button"><X size={14} /></button>
       <strong className="mb-3 block pr-8 text-sm font-black">{nodeTypeLabel(node.type)}: {node.label}</strong>
       <dl className={ui.dl}>
         {inspectorFields(node).slice(0, 7).map(([key, value]) => (
@@ -304,12 +308,12 @@ function nodeStroke(type: GraphNodeType, selected: boolean, expanded: boolean) {
 
 export function GraphInspector({ node, onSelectDevice }: { node: GraphNode | null; onSelectDevice: (deviceId: number) => void }) {
   if (!node) {
-    return <motion.aside className={ui.stickyPanel} {...motionPreset.side}><div className={ui.panelTitle}><Search size={20} /> Obyekt məlumatı</div><p className={cn(ui.emptyText, 'mt-4')}>Qrafdan obyekt seçin.</p></motion.aside>;
+    return <motion.aside className={cn(ui.panel, 'sticky top-6')} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }}><div className={ui.panelTitle}><Search size={20} /> Obyekt məlumatı</div><p className={cn(ui.muted, 'mt-3')}>Qrafdan obyekt seçin.</p></motion.aside>;
   }
   const meta = node.meta as Record<string, unknown> | undefined;
   const risks = nodeRisks(node);
   return (
-    <motion.aside className={ui.stickyPanel} {...motionPreset.side}>
+    <motion.aside className={cn(ui.panel, 'sticky top-6')} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.22 }}>
       <div className={ui.panelTitle}><Search size={20} /> {nodeTypeLabel(node.type)}: {node.label}</div>
       {!!risks.length && <div className="my-3 flex flex-wrap gap-2">{risks.map((risk) => <span key={risk} className={ui.badgeWarn}><AlertTriangle size={14} /> {risk}</span>)}</div>}
       <dl className={cn(ui.dl, 'mt-4')}>
