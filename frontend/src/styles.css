@@ -92,11 +92,13 @@ h3 { color: #0f172a; margin: 16px 0 10px; }
 .graph-tab { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
 .graph-panel select { color: #0f172a; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px 12px; }
 .graph-canvas { position: relative; min-height: 560px; border: 1px solid #dbeafe; border-radius: 24px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); overflow: hidden; }
-.graph-canvas.expanded { position: fixed; inset: 18px; z-index: 1000; min-height: auto; border-radius: 28px; box-shadow: 0 30px 120px rgba(15,23,42,.32); background: #ffffff; }
+.graph-canvas.expanded { position: fixed; inset: 0; z-index: 1000; min-height: auto; border: 0; border-radius: 0; box-shadow: 0 30px 120px rgba(15,23,42,.32); background: #ffffff; }
+.graph-canvas:fullscreen { width: 100vw; height: 100vh; border: 0; border-radius: 0; background: #ffffff; }
 .graph-canvas svg { width: 100%; height: min(72vh, 760px); cursor: grab; touch-action: none; user-select: none; }
 .graph-canvas.expanded svg { height: calc(100vh - 44px); }
+.graph-canvas:fullscreen svg { height: 100vh; }
 .graph-canvas svg:active { cursor: grabbing; }
-.graph-toolbar { position: absolute; z-index: 2; top: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.graph-toolbar { position: absolute; z-index: 6; top: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
 .graph-toolbar button { border: 1px solid #bfdbfe; color: #1d4ed8; background: #eff6ff; border-radius: 999px; padding: 8px 11px; font-size: 12px; font-weight: 900; text-transform: uppercase; }
 .graph-toolbar button:hover { border-color: #2563eb; background: #dbeafe; }
 .graph-link { stroke: #94a3b8; stroke-width: 1.25; stroke-dasharray: 9 10; animation: dash 30s linear infinite; }
@@ -130,8 +132,8 @@ ul { color: #334155; padding-left: 20px; }
 .shimmer { position: relative; overflow: hidden; }
 .shimmer::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(37,99,235,.08), transparent); animation: shimmer 1.4s infinite; }
 
-@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fade-slide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes rise-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-slide { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dash { to { stroke-dashoffset: -260; } }
 @keyframes shimmer { to { transform: translateX(100%); } }
 
@@ -172,9 +174,21 @@ ul { color: #334155; padding-left: 20px; }
   stroke-width: 2;
 }
 
+.graph-node.clickable-device circle {
+  stroke: rgba(22, 163, 74, 0.28);
+  stroke-width: 2;
+}
+
 .graph-node.expanded circle {
-  stroke: rgba(109, 40, 217, 0.95);
   stroke-width: 3;
+}
+
+.graph-node.clickable-site.expanded circle {
+  stroke: rgba(109, 40, 217, 0.95);
+}
+
+.graph-node.clickable-device.expanded circle {
+  stroke: rgba(21, 128, 61, 0.95);
 }
 
 .graph-node.expanding .graph-node-inner {
