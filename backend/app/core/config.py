@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     keycloak_issuer_url: AnyHttpUrl | None = None
     keycloak_audience: str = "netlens-api"
 
-    netbox_token: str = "4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4"
-    netbox_url: str = "https://net-mgmt.taxes.gov.az:5050"
+    netbox_token: str = ""
+    netbox_url: str | None = None
     netbox_verify_ssl: bool = False
     netbox_timeout_seconds: float = 15.0
 
@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     opensearch_password: str | None = None
     opensearch_verify_ssl: bool = True
     opensearch_index_pattern: str = "logs-*"
+    opensearch_firepower_index_pattern: str = "logs-*"
+    opensearch_fmc_estreamer_index_pattern: str = "fmc-estreamer-*"
+    opensearch_checkpoint_index_pattern: str = "checkpoint-*"
     opensearch_timeout_seconds: float = 20.0
     opensearch_timestamp_field: str = "@timestamp"
     opensearch_source_ip_fields: list[str] = Field(
@@ -62,10 +65,7 @@ class Settings(BaseSettings):
     scanner_default_scope: str = "netbox-management"
     scanner_profile: Literal["safe", "normal", "aggressive"] = "safe"
     scanner_dataset_path: str = "./scanner/net_dataset.json"
-    scanner_credentials: list[dict[str, str]] = [
-            {"login": "orxan.n", "password": "Orxan20052004123321!"},
-            {"login": "admin_evi", "password": "M!T@P@@$$2@23T"}
-        ]
+    scanner_credentials: list[dict[str, str]] = Field(default_factory=list)
 
 
 @lru_cache

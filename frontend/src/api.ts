@@ -30,6 +30,30 @@ export type ActivityCounterparty = {
   count: number;
 };
 
+export type UnifiedActivityEvent = {
+  source_name: string;
+  index: string;
+  timestamp: string | null;
+  source_ip: string | null;
+  source_port: number | null;
+  destination_ip: string | null;
+  destination_port: number | null;
+  protocol: string | null;
+  action: string | null;
+  application: string | null;
+  rule: string | null;
+  policy: string | null;
+  user: string | null;
+  domain: string | null;
+  url: string | null;
+  bytes: number | null;
+  packets: number | null;
+  direction: string | null;
+  is_source_ip: boolean;
+  is_destination_ip: boolean;
+  raw: Record<string, unknown>;
+};
+
 export type ActivitySummary = {
   window: string;
   internal_connections: number;
@@ -37,6 +61,14 @@ export type ActivitySummary = {
   security_events: number;
   top_internal_destinations: ActivityCounterparty[];
   top_external_destinations: ActivityCounterparty[];
+  top_internal_ports: ActivityCounterparty[];
+  top_external_ports: ActivityCounterparty[];
+  top_domains: ActivityCounterparty[];
+  source_stats: Record<string, number>;
+  index_stats: Record<string, number>;
+  events: UnifiedActivityEvent[];
+  user: string | null;
+  users: string[];
   status: IntegrationStatus;
 };
 
@@ -45,6 +77,12 @@ export type IpSummary = {
   netbox: NetBoxContext;
   scan: ScanContext;
   activity: ActivitySummary;
+};
+
+export type IpSummaryFilters = {
+  srcIp?: string;
+  dstIp?: string;
+  dstPort?: string;
 };
 
 export type NetBoxRegion = {
@@ -89,6 +127,9 @@ export type NetBoxInterface = {
   mac_vendor_source: string | null;
   description: string | null;
   mode: string | null;
+  mtu: number | null;
+  speed: number | null;
+  duplex: string | null;
   untagged_vlan: string | null;
   learned_mac_addresses: NetBoxMacAddress[];
 };
@@ -144,8 +185,13 @@ async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function fetchIpSummary(ip: string): Promise<IpSummary> {
-  return apiGet<IpSummary>(`/ip/${encodeURIComponent(ip)}/summary`);
+export function fetchIpSummary(ip: string, filters: IpSummaryFilters = {}): Promise<IpSummary> {
+  const params = new URLSearchParams();
+  if (filters.srcIp?.trim()) params.set('src_ip', filters.srcIp.trim());
+  if (filters.dstIp?.trim()) params.set('dst_ip', filters.dstIp.trim());
+  if (filters.dstPort?.trim() && /^\d+$/.test(filters.dstPort.trim())) params.set('dst_port', filters.dstPort.trim());
+  const query = params.toString();
+  return apiGet<IpSummary>(`/ip/${encodeURIComponent(ip)}/summary${query ? `?${query}` : ''}`);
 }
 
 export function fetchNetBoxInventory(): Promise<NetBoxInventory> {

@@ -113,6 +113,9 @@ class OpenSearchActivityService:
             start: str | None = None,
             end: str | None = None,
             size_per_source: int = 100,
+            src_ip: str | None = None,
+            dst_ip: str | None = None,
+            dst_port: int | None = None,
     ) -> dict[str, Any]:
         mappings = self._source_mappings()
         logs: list[dict[str, Any]] = []
@@ -126,6 +129,9 @@ class OpenSearchActivityService:
                     start=start,
                     end=end,
                     size=size_per_source,
+                    src_ip=src_ip,
+                    dst_ip=dst_ip,
+                    dst_port=dst_port,
                 )
 
                 response = await client.post(
@@ -187,6 +193,9 @@ class OpenSearchActivityService:
         start: str | None = None,
         end: str | None = None,
         size_per_source: int = 100,
+        src_ip: str | None = None,
+        dst_ip: str | None = None,
+        dst_port: int | None = None,
     ) -> ActivitySummary:
         if not self.settings.opensearch_url:
             return ActivitySummary(
@@ -211,6 +220,9 @@ class OpenSearchActivityService:
                         start=start,
                         end=end,
                         size=size_per_source,
+                        src_ip=src_ip,
+                        dst_ip=dst_ip,
+                        dst_port=dst_port,
                     )
 
                     response = await client.post(
@@ -497,6 +509,9 @@ class OpenSearchActivityService:
         start: str | None = None,
         end: str | None = None,
         size: int = 100,
+        src_ip: str | None = None,
+        dst_ip: str | None = None,
+        dst_port: int | None = None,
     ) -> dict[str, Any]:
         time_range = self._build_time_range(
             timestamp_field=mapping.timestamp_field,
@@ -505,10 +520,35 @@ class OpenSearchActivityService:
             end=end,
         )
 
+        directional_filters: list[dict[str, Any]] = []
         ip_should = [
             {"term": {field: ip}}
             for field in mapping.source_ip_fields + mapping.destination_ip_fields
         ]
+
+        if src_ip:
+            directional_filters.append({
+                "bool": {
+                    "should": self._field_terms(mapping.source_ip_fields, src_ip),
+                    "minimum_should_match": 1,
+                }
+            })
+
+        if dst_ip:
+            directional_filters.append({
+                "bool": {
+                    "should": self._field_terms(mapping.destination_ip_fields, dst_ip),
+                    "minimum_should_match": 1,
+                }
+            })
+
+        if dst_port is not None:
+            directional_filters.append({
+                "bool": {
+                    "should": self._field_terms(mapping.destination_port_fields, dst_port),
+                    "minimum_should_match": 1,
+                }
+            })
 
         source_includes = sorted(
             {
@@ -540,9 +580,9 @@ class OpenSearchActivityService:
                 "bool": {
                     "filter": [
                         time_range,
+                        *directional_filters,
                     ],
-                    "should": ip_should,
-                    "minimum_should_match": 1,
+                    **({"should": ip_should, "minimum_should_match": 1} if not directional_filters else {}),
                 }
             },
             "sort": [
@@ -554,6 +594,11 @@ class OpenSearchActivityService:
                 }
             ],
         }
+
+
+    @staticmethod
+    def _field_terms(fields: list[str], value: str | int) -> list[dict[str, Any]]:
+        return [{"term": {field: value}} for field in fields]
 
     def _build_time_range(
         self,

@@ -159,7 +159,7 @@ export function InventoryGraph({
         <defs>
           <filter id="glow"><feGaussianBlur stdDeviation="4" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
-        <motion.g animate={{ x: viewport.x, y: viewport.y, scale: viewport.scale }} transition={{ type: 'spring', stiffness: 260, damping: 30 }}>
+        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
           {graph.links.map((link) => {
             const from = nodeById.get(link.from);
             const to = nodeById.get(link.to);
@@ -175,6 +175,7 @@ export function InventoryGraph({
                 y2={to.y}
                 strokeWidth={1.25}
                 strokeDasharray="9 10"
+                vectorEffect="non-scaling-stroke"
                 initial={{ opacity: 0, pathLength: 0 }}
                 animate={{ opacity: isCollapsing ? 0 : 1, pathLength: isCollapsing ? 0 : 1 }}
                 transition={{ duration: isCollapsing ? 0.22 : 0.28 }}
@@ -190,8 +191,9 @@ export function InventoryGraph({
             const isSelected = selectedId === node.id;
 
             return (
-              <motion.g
+              <g
                 className={cn('graph-node outline-none', (node.type === 'site' || node.type === 'device') && 'cursor-pointer')}
+                data-graph-node="true"
                 key={node.id}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -202,40 +204,43 @@ export function InventoryGraph({
                 }}
                 tabIndex={0}
                 transform={`translate(${node.x} ${node.y})`}
-                initial={{ opacity: 0, y: -18, scale: 0.82 }}
-                animate={{ opacity: isCollapsing ? 0 : 1, y: isCollapsing ? -18 : 0, scale: isCollapsing ? 0.82 : 1 }}
-                transition={{ duration: isCollapsing ? 0.22 : 0.24, ease: 'easeOut' }}
-                whileHover={{ scale: 1.04 }}
               >
-                <circle
-                  fill={nodeColor(node.type)}
-                  filter="url(#glow)"
-                  r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27}
-                  stroke={nodeStroke(node.type, isSelected, isExpandedSite || isExpandedDevice)}
-                  strokeWidth={isSelected ? 5 : isExpandedSite || isExpandedDevice ? 3 : 1.6}
-                />
+                <motion.g
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: isCollapsing ? 0 : 1 }}
+                  transition={{ duration: isCollapsing ? 0.22 : 0.24, ease: 'easeOut' }}
+                >
+                  <circle
+                    fill={nodeColor(node.type)}
+                    filter="url(#glow)"
+                    r={node.type === 'region' ? 34 : node.type === 'interface' ? 19 : 27}
+                    stroke={nodeStroke(node.type, isSelected, isExpandedSite || isExpandedDevice)}
+                    strokeWidth={isSelected ? 5 : isExpandedSite || isExpandedDevice ? 3 : 1.6}
+                    vectorEffect="non-scaling-stroke"
+                  />
 
-                <g className="pointer-events-none" style={{ color: iconColor(node.type) }} transform="translate(-12 -12)">
-                  <GraphNodeIcon type={node.type} />
-                </g>
+                  <g className="pointer-events-none" style={{ color: iconColor(node.type) }} transform="translate(-12 -12)">
+                    <GraphNodeIcon type={node.type} />
+                  </g>
 
-                <text className="pointer-events-none select-none fill-slate-950 text-[13px] font-black [paint-order:stroke] [stroke-width:5px] [stroke:rgba(255,255,255,.96)]" textAnchor="middle" y={node.type === 'interface' ? 45 : 52}>{node.label}</text>
+                  <text className="pointer-events-none select-none fill-slate-950 text-[13px] font-black [paint-order:stroke] [stroke-width:5px] [stroke:rgba(255,255,255,.96)]" textAnchor="middle" y={node.type === 'interface' ? 45 : 52}>{node.label}</text>
 
-                {node.type === 'site' && (
-                  <text className="pointer-events-none select-none fill-slate-500 text-[10px] font-bold" textAnchor="middle" y="72">
-                    {isExpandedSite ? 'qurğuları gizlət' : 'qurğuları göstər'}
-                  </text>
-                )}
+                  {node.type === 'site' && (
+                    <text className="pointer-events-none select-none fill-slate-500 text-[10px] font-bold" textAnchor="middle" y="72">
+                      {isExpandedSite ? 'qurğuları gizlət' : 'qurğuları göstər'}
+                    </text>
+                  )}
 
-                {node.type === 'device' && (
-                  <text className="pointer-events-none select-none fill-slate-500 text-[10px] font-bold" textAnchor="middle" y="72">
-                    {isExpandedDevice ? 'interfeysləri gizlət' : 'interfeysləri göstər'}
-                  </text>
-                )}
-              </motion.g>
+                  {node.type === 'device' && (
+                    <text className="pointer-events-none select-none fill-slate-500 text-[10px] font-bold" textAnchor="middle" y="72">
+                      {isExpandedDevice ? 'interfeysləri gizlət' : 'interfeysləri göstər'}
+                    </text>
+                  )}
+                </motion.g>
+              </g>
             );
           })}
-        </motion.g>
+        </g>
       </svg>
       {selectedNode && (
         <GraphPopover

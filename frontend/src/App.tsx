@@ -10,6 +10,7 @@ import {
   Download,
   GitBranch,
   Layers3,
+  Loader2,
   MapPinned,
   Network,
   Radar,
@@ -22,6 +23,8 @@ import {
   fetchIpSummary,
   fetchNetBoxDeviceDetail,
   fetchNetBoxInventory,
+  type ActivityCounterparty,
+  type UnifiedActivityEvent,
   type NetBoxDevice,
   type NetBoxInterface,
   type NetBoxSite,
@@ -46,6 +49,10 @@ import type { GraphLevels, GraphNode, MainTab, QuickFilter } from './types';
 export function App() {
   const [input, setInput] = useState('10.255.127.60');
   const [ip, setIp] = useState('10.255.127.60');
+  const [logSrcIp, setLogSrcIp] = useState('');
+  const [logDstIp, setLogDstIp] = useState('');
+  const [logDstPort, setLogDstPort] = useState('');
+  const [submittedLogFilters, setSubmittedLogFilters] = useState({ srcIp: '', dstIp: '', dstPort: '' });
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>('inventory');
   const [selectedRegionName, setSelectedRegionName] = useState<string | null>(null);
@@ -61,8 +68,8 @@ export function App() {
   const deviceCollapseTimerRef = useRef<number | null>(null);
 
   const summary = useQuery({
-    queryKey: ['ip-summary', ip],
-    queryFn: () => fetchIpSummary(ip),
+    queryKey: ['ip-summary', ip, submittedLogFilters],
+    queryFn: () => fetchIpSummary(ip, submittedLogFilters),
     enabled: isLikelyIp(ip),
   });
 
@@ -250,7 +257,9 @@ export function App() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIp(input.trim());
+    const fallbackIp = input.trim() || logSrcIp.trim() || logDstIp.trim();
+    setIp(fallbackIp);
+    setSubmittedLogFilters({ srcIp: logSrcIp.trim(), dstIp: logDstIp.trim(), dstPort: logDstPort.trim() });
     setActiveTab('ip');
   }
 
@@ -286,7 +295,7 @@ export function App() {
         <MetricCard icon={<Network size={20} />} label="İnterfeyslər" value={data?.interfaces.length ?? 0} />
       </section>
 
-      {inventory.isLoading && <div className={cn(ui.panel, 'animate-pulse')}>NetBox inventarı yüklənir...</div>}
+      {inventory.isLoading && <LoadingPanel label="NetBox inventarı yüklənir..." />}
       {inventory.isError && <div className={cn(ui.panel, 'border-rose-200 bg-rose-50 text-rose-700')}>NetBox inventar xətası: {(inventory.error as Error).message}</div>}
       {data && data.status.status !== 'ok' && (
         <div className={cn(ui.panel, 'border-amber-200 bg-amber-50 text-amber-700')}>NetBox statusu: {data.status.message ?? data.status.status}</div>
@@ -441,13 +450,33 @@ export function App() {
 
       {activeTab === 'ip' && (
         <motion.section className="space-y-5" {...motionPreset.page}>
-          <form className={cn(ui.panel, 'grid gap-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center')} onSubmit={submit}>
-            <Search className="text-blue-600" size={22} />
-            <input className={ui.input} value={input} onChange={(event) => setInput(event.target.value)} placeholder="10.255.127.60" />
-            <button className={ui.primaryButton} type="submit">IP-ni yoxla</button>
+          <form className={cn(ui.panel, 'space-y-4')} onSubmit={submit}>
+            <div className="grid gap-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+              <Search className="text-blue-600" size={22} />
+              <input className={ui.input} value={input} onChange={(event) => setInput(event.target.value)} placeholder="Əsas IP / fallback" />
+              <button className={ui.primaryButton} type="submit" disabled={summary.isFetching}>
+                {summary.isFetching ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                Logları yoxla
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                Src IP
+                <input className={ui.input} value={logSrcIp} onChange={(event) => setLogSrcIp(event.target.value)} placeholder="10.1.1.10" />
+              </label>
+              <label className="space-y-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                Dst IP
+                <input className={ui.input} value={logDstIp} onChange={(event) => setLogDstIp(event.target.value)} placeholder="8.8.8.8" />
+              </label>
+              <label className="space-y-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                Dst port
+                <input className={ui.input} value={logDstPort} onChange={(event) => setLogDstPort(event.target.value)} inputMode="numeric" placeholder="443" />
+              </label>
+            </div>
+            <p className={ui.muted}>Src/Dst boşdursa əsas IP həm mənbə, həm də təyinat kimi axtarılır. Src və ya Dst göstərsən, OpenSearch filter kimi tətbiq olunur.</p>
           </form>
 
-          {summary.isLoading && <div className={cn(ui.panel, 'animate-pulse')}>Məlumat yüklənir...</div>}
+          {summary.isFetching && <LoadingPanel label="NetBox və OpenSearch məlumatı yüklənir..." />}
           {summary.isError && <div className={cn(ui.panel, 'border-rose-200 bg-rose-50 text-rose-700')}>Xəta: {(summary.error as Error).message}</div>}
 
           {summary.data && (
@@ -475,17 +504,24 @@ export function App() {
 
               <article className={ui.panel}>
                 <div className={ui.panelTitle}><Activity size={20} /> Aktivlik / {summary.data.activity.window}</div>
+                {summary.data.activity.status.status !== 'ok' && (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-700">
+                    OpenSearch statusu: {summary.data.activity.status.message ?? summary.data.activity.status.status}
+                  </div>
+                )}
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <span className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-slate-500"><b className="block text-2xl font-black text-slate-950">{summary.data.activity.internal_connections}</b> daxili</span>
                   <span className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-slate-500"><b className="block text-2xl font-black text-slate-950">{summary.data.activity.external_connections}</b> xarici</span>
                   <span className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-slate-500"><b className="block text-2xl font-black text-slate-950">{summary.data.activity.security_events}</b> təhlükəsizlik</span>
                 </div>
-                <h3 className="mt-5 text-sm font-black uppercase tracking-[0.18em] text-slate-500">Əsas daxili istiqamətlər</h3>
-                <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
-                  {summary.data.activity.top_internal_destinations.map((item) => (
-                    <li key={`${item.ip}-${item.port}`}>{item.ip}:{item.port ?? '*'} — {item.count}</li>
-                  ))}
-                </ul>
+                <CounterpartyList title="Əsas daxili istiqamətlər" items={summary.data.activity.top_internal_destinations} />
+                <CounterpartyList title="Əsas xarici istiqamətlər" items={summary.data.activity.top_external_destinations} />
+                <CounterpartyList title="Daxili portlar" items={summary.data.activity.top_internal_ports} />
+                <CounterpartyList title="Xarici portlar" items={summary.data.activity.top_external_ports} />
+                <CounterpartyList title="Domainlər" items={summary.data.activity.top_domains} />
+                <StatMap title="Mənbə statistikası" stats={summary.data.activity.source_stats} />
+                <StatMap title="İndeks statistikası" stats={summary.data.activity.index_stats} />
+                <ActivityEventList events={summary.data.activity.events} />
               </article>
             </section>
           )}
@@ -520,6 +556,104 @@ function groupDevicesBySite(devices: NetBoxDevice[]) {
     grouped.set(device.site, [...(grouped.get(device.site) ?? []), device]);
   }
   return grouped;
+}
+
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <div className={cn(ui.panel, 'flex items-center gap-3 text-sm font-black text-blue-700')}>
+      <Loader2 className="animate-spin" size={20} />
+      {label}
+    </div>
+  );
+}
+
+function CounterpartyList({ items, title }: { items: ActivityCounterparty[]; title: string }) {
+  return (
+    <div className="mt-5">
+      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">{title}</h3>
+      {items.length ? (
+        <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
+          {items.map((item) => (
+            <li className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]" key={`${item.ip}-${item.port}-${item.count}`}>
+              <code className="break-all font-mono text-slate-950">{item.ip || '—'}</code>
+              <span>dst port: {item.port ?? '*'}</span>
+              <b>{item.count}</b>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={cn(ui.muted, 'mt-3')}>Məlumat yoxdur.</p>
+      )}
+    </div>
+  );
+}
+
+function StatMap({ stats, title }: { stats: Record<string, number>; title: string }) {
+  const entries = Object.entries(stats ?? {}).sort(([, left], [, right]) => right - left);
+
+  return (
+    <div className="mt-5">
+      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">{title}</h3>
+      {entries.length ? (
+        <ul className="mt-3 space-y-2 text-sm font-semibold text-slate-700">
+          {entries.map(([name, count]) => (
+            <li className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3" key={name}>
+              <code className="min-w-0 break-all font-mono text-slate-950">{name}</code>
+              <b>{count}</b>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={cn(ui.muted, 'mt-3')}>Məlumat yoxdur.</p>
+      )}
+    </div>
+  );
+}
+
+function ActivityEventList({ events }: { events: UnifiedActivityEvent[] }) {
+  return (
+    <div className="mt-5">
+      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">OpenSearch hadisələri</h3>
+      {events.length ? (
+        <div className="mt-3 max-h-[520px] space-y-3 overflow-auto pr-1">
+          {events.map((event, index) => (
+            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm" key={`${event.index}-${event.timestamp}-${event.source_ip}-${event.destination_ip}-${index}`}>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-black uppercase text-slate-500">
+                <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{event.source_name}</span>
+                <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{event.index}</span>
+                <span>{event.timestamp ?? '—'}</span>
+              </div>
+              <dl className="grid gap-2 sm:grid-cols-2">
+                <EventField label="src" value={`${event.source_ip ?? '—'}:${event.source_port ?? '*'}`} mono />
+                <EventField label="dst" value={`${event.destination_ip ?? '—'}:${event.destination_port ?? '*'}`} mono />
+                <EventField label="action" value={event.action ?? '—'} />
+                <EventField label="protocol" value={event.protocol ?? '—'} />
+                <EventField label="application" value={event.application ?? '—'} />
+                <EventField label="user" value={event.user ?? '—'} />
+                <EventField label="rule" value={event.rule ?? '—'} />
+                <EventField label="policy" value={event.policy ?? '—'} />
+                <EventField label="domain" value={event.domain ?? '—'} />
+                <EventField label="url" value={event.url ?? '—'} />
+                <EventField label="bytes/packets" value={`${event.bytes ?? '—'} / ${event.packets ?? '—'}`} />
+                <EventField label="direction" value={event.direction ?? '—'} />
+              </dl>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className={cn(ui.muted, 'mt-3')}>Məlumat yoxdur.</p>
+      )}
+    </div>
+  );
+}
+
+function EventField({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
+  return (
+    <div className="min-w-0 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+      <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</dt>
+      <dd className={cn('min-w-0 break-words font-semibold text-slate-800', mono && 'break-all font-mono text-xs')}>{value}</dd>
+    </div>
+  );
 }
 
 function DeviceRow({ device, interfaceCount, selected, onSelect }: { device: NetBoxDevice; interfaceCount: number; selected: boolean; onSelect: () => void }) {
