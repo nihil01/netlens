@@ -10,7 +10,7 @@ export const motionPreset = {
     animate: { opacity: 1, y: 0 },
     transition: { duration: 0.28, ease: 'easeOut' },
   },
-};
+} as const;
 
 export const ui = {
   appShell:

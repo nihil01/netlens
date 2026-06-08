@@ -131,13 +131,6 @@ class ActivityCounterparty(BaseModel):
     count: int
 
 
-class IpSummary(BaseModel):
-    ip: str
-    netbox: NetBoxContext
-    scan: ScanContext
-    activity: ActivitySummary
-
-
 class UnifiedActivityEvent(BaseModel):
     source_name: str
     index: str
@@ -184,3 +177,10 @@ class ActivitySummary(BaseModel):
     top_domains: list[ActivityCounterparty] = []
     source_stats: dict[str, int] = {}
     index_stats: dict[str, int] = {}
+
+
+class IpSummary(BaseModel):
+    ip: str
+    netbox: NetBoxContext
+    scan: ScanContext
+    activity: ActivitySummary

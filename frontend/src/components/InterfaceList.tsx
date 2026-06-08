@@ -1,21 +1,27 @@
-import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { NetBoxInterface } from '../api';
 import { emptyLabel } from '../lib/format';
 import { cn, ui } from '../lib/ui';
 
 type LearnedMac = NonNullable<NetBoxInterface['learned_mac_addresses']>[number];
 
+const DEFAULT_PAGE_SIZE = 10;
+
 export function InterfaceList({
   interfaces,
+  pageSize = DEFAULT_PAGE_SIZE,
   showDevice = false,
   showVendor = false,
 }: {
   interfaces: NetBoxInterface[];
+  pageSize?: number;
   showDevice?: boolean;
   showVendor?: boolean;
 }) {
   const [openPorts, setOpenPorts] = useState<Record<string, boolean>>({});
+  const [page, setPage] = useState(1);
+  const safePageSize = Math.max(1, pageSize);
 
   const groupedByDevice = useMemo(() => {
     const map = new Map<string, NetBoxInterface[]>();
@@ -33,6 +39,21 @@ export function InterfaceList({
     }));
   }, [interfaces]);
 
+  const totalPages = Math.max(1, Math.ceil(groupedByDevice.length / safePageSize));
+  const visibleGroups = useMemo(() => {
+    const boundedPage = Math.min(page, totalPages);
+    const start = (boundedPage - 1) * safePageSize;
+    return groupedByDevice.slice(start, start + safePageSize);
+  }, [groupedByDevice, page, safePageSize, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [interfaces, safePageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   if (!interfaces.length) return <p className={ui.emptyText}>İnterfeys yoxdur</p>;
 
   function togglePort(key: string) {
@@ -44,11 +65,23 @@ export function InterfaceList({
 
   return (
     <div className="mt-4 space-y-4">
-      <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
-        İnterfeyslər
-      </h3>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+          İnterfeyslər
+        </h3>
+        {totalPages > 1 && (
+          <InterfacePager
+            page={page}
+            pageSize={safePageSize}
+            total={groupedByDevice.length}
+            totalPages={totalPages}
+            unit="qurğu"
+            onChange={setPage}
+          />
+        )}
+      </div>
 
-      {groupedByDevice.map((group) => (
+      {visibleGroups.map((group) => (
         <section
           key={group.device}
           className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -196,17 +229,37 @@ function LearnedMacList({ macs }: { macs: LearnedMac[] }) {
   );
 }
 
-function Info({
-  label,
-  mono = false,
-  value,
-  wide = false,
+function InterfacePager({
+  onChange,
+  page,
+  pageSize,
+  total,
+  totalPages,
+  unit,
 }: {
-  label: string;
-  mono?: boolean;
-  value: string;
-  wide?: boolean;
+  onChange: (page: number) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  unit: string;
 }) {
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-500">
+      <span className="rounded-full bg-slate-100 px-3 py-2">
+        {start}-{end} / {total} {unit}
+      </span>
+      <button className={ui.pillButton} type="button" disabled={page === 1} onClick={() => onChange(Math.max(1, page - 1))}>geri</button>
+      <span>{page}/{totalPages}</span>
+      <button className={ui.pillButton} type="button" disabled={page === totalPages} onClick={() => onChange(Math.min(totalPages, page + 1))}>irəli</button>
+    </div>
+  );
+}
+
+function Info({ label, mono = false, value, wide = false }: { label: string; mono?: boolean; value: string; wide?: boolean }) {
   return (
     <span className={cn('min-w-0 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200', wide && 'sm:col-span-2 xl:col-span-4')}>
       <small className="block text-[10px] font-black uppercase tracking-wide text-slate-400">
