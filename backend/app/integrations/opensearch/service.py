@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,6 +52,133 @@ class OpenSearchActivityService:
     @classmethod
     def from_settings(cls) -> "OpenSearchActivityService":
         return cls(get_settings())
+
+    def _extract_user_from_event(self, event: UnifiedActivityEvent) -> str | None:
+        if event.user:
+            return event.user
+
+        message = ""
+        if isinstance(event.raw, dict):
+            message = str(event.raw.get("message") or "")
+
+        patterns = [
+            r"User <([^>]+)>",
+            r"\(LOCAL\\([^)]+)\)",
+            r"\(([^)]+)\)$",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, message)
+            if match:
+                return match.group(1)
+
+        return None
+
+    def _counter_to_ports(
+            self,
+            counter: dict[int, int],
+    ) -> list[ActivityCounterparty]:
+        items = sorted(counter.items(), key=lambda item: item[1], reverse=True)
+
+        return [
+            ActivityCounterparty(
+                ip="",
+                port=port,
+                service=None,
+                count=count,
+            )
+            for port, count in items
+        ]
+
+    def _counter_to_domains(
+            self,
+            counter: dict[str, int],
+    ) -> list[ActivityCounterparty]:
+        items = sorted(counter.items(), key=lambda item: item[1], reverse=True)
+
+        return [
+            ActivityCounterparty(
+                ip=domain,
+                port=None,
+                service=None,
+                count=count,
+            )
+            for domain, count in items
+        ]
+
+    async def get_ip_logs(
+            self,
+            ip: str,
+            window: str = "24h",
+            start: str | None = None,
+            end: str | None = None,
+            size_per_source: int = 100,
+    ) -> dict[str, Any]:
+        mappings = self._source_mappings()
+        logs: list[dict[str, Any]] = []
+
+        async with self._client() as client:
+            for mapping in mappings:
+                body = self.build_ip_logs_query(
+                    mapping=mapping,
+                    ip=ip,
+                    window=window,
+                    start=start,
+                    end=end,
+                    size=size_per_source,
+                )
+
+                response = await client.post(
+                    f"/{mapping.index_pattern}/_search",
+                    json=body,
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                events = self._map_hits(
+                    data=data,
+                    mapping=mapping,
+                    ip=ip,
+                )
+
+                hits = data.get("hits", {}).get("hits", [])
+
+                for hit, event in zip(hits, events):
+                    logs.append({
+                        "source_name": event.source_name,
+                        "index": event.index,
+                        "id": hit.get("_id"),
+                        "timestamp": event.timestamp,
+                        "source_ip": event.source_ip,
+                        "source_port": event.source_port,
+                        "destination_ip": event.destination_ip,
+                        "destination_port": event.destination_port,
+                        "protocol": event.protocol,
+                        "action": event.action,
+                        "application": event.application,
+                        "rule": event.rule,
+                        "policy": event.policy,
+                        "user": event.user,
+                        "domain": event.domain,
+                        "url": event.url,
+                        "bytes": event.bytes,
+                        "packets": event.packets,
+                        "direction": event.direction,
+                        "is_source_ip": event.is_source_ip,
+                        "is_destination_ip": event.is_destination_ip,
+                        "raw": event.raw,
+                    })
+
+        logs.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+
+        return {
+            "status": {"status": "ok"},
+            "ip": ip,
+            "window": window if not start else f"{start} - {end or 'now'}",
+            "total": len(logs),
+            "logs": logs,
+        }
+
 
     async def summarize_ip(
         self,
@@ -503,19 +631,41 @@ class OpenSearchActivityService:
         return events
 
     def _build_summary_from_events(
-        self,
-        ip: str,
-        events: list[UnifiedActivityEvent],
-        window: str,
+            self,
+            ip: str,
+            events: list[UnifiedActivityEvent],
+            window: str,
     ) -> ActivitySummary:
         internal_counter: dict[tuple[str, int | None], int] = {}
         external_counter: dict[tuple[str, int | None], int] = {}
+
+        internal_ports: dict[int, int] = {}
+        external_ports: dict[int, int] = {}
+        domain_counter: dict[str, int] = {}
+
+        source_stats: dict[str, int] = {}
+        index_stats: dict[str, int] = {}
+
+        users: set[str] = set()
 
         internal_count = 0
         external_count = 0
         security_events = 0
 
         for event in events:
+            if event.source_name:
+                source_stats[event.source_name] = source_stats.get(event.source_name, 0) + 1
+
+            if event.index:
+                index_stats[event.index] = index_stats.get(event.index, 0) + 1
+
+            extracted_user = self._extract_user_from_event(event)
+            if extracted_user:
+                users.add(extracted_user)
+
+            if event.domain:
+                domain_counter[event.domain] = domain_counter.get(event.domain, 0) + 1
+
             peer_ip = None
             peer_port = None
 
@@ -529,29 +679,42 @@ class OpenSearchActivityService:
             if not peer_ip:
                 continue
 
-            key = (peer_ip, peer_port)
             action = (event.action or "").lower()
 
             if action in self._all_block_actions():
                 security_events += 1
 
+            key = (peer_ip, peer_port)
+
             if self._is_internal_ip(peer_ip):
                 internal_count += 1
                 internal_counter[key] = internal_counter.get(key, 0) + 1
+
+                if peer_port:
+                    internal_ports[peer_port] = internal_ports.get(peer_port, 0) + 1
             else:
                 external_count += 1
                 external_counter[key] = external_counter.get(key, 0) + 1
 
-        top_internal = self._counter_to_counterparties(internal_counter)
-        top_external = self._counter_to_counterparties(external_counter)
+                if peer_port:
+                    external_ports[peer_port] = external_ports.get(peer_port, 0) + 1
+
+        sorted_users = sorted(users)
 
         return ActivitySummary(
             window=window,
+            user=sorted_users[0] if sorted_users else None,
+            users=sorted_users,
             internal_connections=internal_count,
             external_connections=external_count,
             security_events=security_events,
-            top_internal_destinations=top_internal[:10],
-            top_external_destinations=top_external[:10],
+            top_internal_destinations=self._counter_to_counterparties(internal_counter)[:10],
+            top_external_destinations=self._counter_to_counterparties(external_counter)[:10],
+            top_internal_ports=self._counter_to_ports(internal_ports)[:10],
+            top_external_ports=self._counter_to_ports(external_ports)[:10],
+            top_domains=self._counter_to_domains(domain_counter)[:10],
+            source_stats=source_stats,
+            index_stats=index_stats,
             events=events[:300],
             status=IntegrationStatus(status="ok"),
         )

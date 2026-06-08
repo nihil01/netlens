@@ -177,3 +177,10 @@ class ActivitySummary(BaseModel):
     top_external_destinations: list[ActivityCounterparty] = Field(default_factory=list)
     events: list[UnifiedActivityEvent] = Field(default_factory=list)
     status: IntegrationStatus = Field(default_factory=lambda: IntegrationStatus(status="ok"))
+    user: str | None = None
+    users: list[str] = []
+    top_internal_ports: list[ActivityCounterparty] = []
+    top_external_ports: list[ActivityCounterparty] = []
+    top_domains: list[ActivityCounterparty] = []
+    source_stats: dict[str, int] = {}
+    index_stats: dict[str, int] = {}
