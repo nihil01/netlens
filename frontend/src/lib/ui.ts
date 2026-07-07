@@ -1,4 +1,4 @@
-// src/lib/ui.ts
+// src/lib/ui.ts — Clean minimal design system
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -6,88 +6,73 @@ export function cn(...classes: Array<string | false | null | undefined>) {
 
 export const motionPreset = {
   page: {
-    initial: { opacity: 0, y: 14 },
+    initial: { opacity: 0, y: 8 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.28, ease: 'easeOut' },
+    transition: { duration: 0.2, ease: 'easeOut' },
   },
 } as const;
 
 export const ui = {
-  appShell:
-    'min-h-screen space-y-6 bg-[#eef4ff] px-4 py-5 text-slate-900 sm:px-6 lg:px-8',
+  appShell: 'min-h-screen space-y-5 bg-gray-50 px-4 py-6 text-gray-900 sm:px-6 lg:px-8',
 
-  panel:
-    'rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)] backdrop-blur',
+  panel: 'rounded-xl border border-gray-200 bg-white p-5',
 
   stickyPanel:
-    'rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)] backdrop-blur xl:sticky xl:top-5 xl:self-start',
+    'rounded-xl border border-gray-200 bg-white p-5 xl:sticky xl:top-5 xl:self-start',
 
-  panelHeader:
-    'flex flex-col justify-between gap-4 sm:flex-row sm:items-center',
+  panelHeader: 'flex flex-col justify-between gap-3 sm:flex-row sm:items-center',
 
-  panelTitle:
-    'flex items-center gap-2 text-base font-black text-slate-900',
+  panelTitle: 'flex items-center gap-2 text-sm font-semibold text-gray-900',
 
-  muted:
-    'text-sm text-slate-500',
+  muted: 'text-xs text-gray-500',
 
-  errorText:
-    'text-sm font-bold text-rose-600',
+  errorText: 'text-sm font-medium text-red-600',
 
   eyebrow:
-    'inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-blue-700',
+    'inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-blue-700',
 
-  inventoryLayout:
-    'grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)_360px]',
+  inventoryLayout: 'grid grid-cols-1 gap-5 xl:grid-cols-[260px_minmax(0,1fr)_340px]',
 
-  graphLayout:
-    'grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]',
+  graphLayout: 'grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]',
 
-  twoColumnLayout:
-    'grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]',
+  twoColumnLayout: 'grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]',
 
-  siteCard:
-    'rounded-3xl border border-slate-200 bg-slate-50/80 p-4 shadow-[0_12px_35px_rgba(15,23,42,0.04)]',
+  siteCard: 'rounded-lg border border-gray-200 bg-gray-50 p-4',
 
   cardButton:
-    'flex w-full items-center justify-between gap-3 rounded-2xl border p-3 text-left transition focus:outline-none focus:ring-4 focus:ring-blue-100',
+    'flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
 
-  cardButtonIdle:
-    'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50',
+  cardButtonIdle: 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50',
 
-  cardButtonActive:
-    'border-blue-500 bg-blue-50 text-blue-700 shadow-[0_12px_30px_rgba(37,99,235,0.12)]',
+  cardButtonActive: 'border-blue-500 bg-blue-50 text-blue-700',
 
   primaryButton:
-    'inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white shadow-[0_14px_35px_rgba(37,99,235,0.25)] transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200',
+    'inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50',
 
   ghostButton:
-    'inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-black text-blue-700 transition hover:border-blue-500 hover:bg-blue-100 focus:outline-none focus:ring-4 focus:ring-blue-100',
+    'inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50',
 
   pillButton:
-    'inline-flex items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase text-blue-700 transition hover:border-blue-500 hover:bg-blue-100 focus:outline-none focus:ring-4 focus:ring-blue-100',
+    'inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500',
 
-  selectedPill:
-    'border-blue-600 bg-blue-600 text-white shadow-[0_14px_35px_rgba(37,99,235,0.25)] hover:bg-blue-700',
+  selectedPill: 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700',
 
   input:
-    'w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100',
+    'w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
 
   select:
-    'rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100',
+    'rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
 
   badgeGood:
-    'inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700',
+    'inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200',
 
   badgeWarn:
-    'inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-black uppercase text-amber-700',
+    'inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200',
 
   badgeError:
-    'inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-black uppercase text-rose-700',
+    'inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200',
 
-  dl:
-    'grid grid-cols-[130px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm text-slate-700 [&_dt]:font-bold [&_dt]:text-slate-500 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:font-semibold [&_dd]:text-slate-900',
+  dl: 'grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm text-gray-700 [&_dt]:font-medium [&_dt]:text-gray-500 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-gray-900',
 
-  emptyText:
-  'rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-500',
+  emptyText: 'rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500',
 };

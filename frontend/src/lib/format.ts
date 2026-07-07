@@ -1,5 +1,8 @@
 export function isLikelyIp(value: string): boolean {
-  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(value.trim());
+  const trimmed = value.trim();
+  const parts = trimmed.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
 export function emptyLabel(value: string | number | boolean | null | undefined): string {
@@ -28,4 +31,28 @@ export function downloadJson(filename: string, payload: unknown) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Format ISO timestamp to Baku time (GMT+4), 24h format.
+ * Input: "2026-07-07T12:30:00Z" or "2026-07-07T12:30:00.000Z"
+ * Output: "2026-07-07 16:30:00"
+ */
+export function toBakuTime(isoString: string | null | undefined): string {
+  if (!isoString) return '—';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString.slice(0, 19);
+    // Baku is UTC+4
+    const bakuTime = new Date(date.getTime() + (4 * 60 * 60 * 1000));
+    const y = bakuTime.getUTCFullYear();
+    const m = String(bakuTime.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(bakuTime.getUTCDate()).padStart(2, '0');
+    const h = String(bakuTime.getUTCHours()).padStart(2, '0');
+    const min = String(bakuTime.getUTCMinutes()).padStart(2, '0');
+    const s = String(bakuTime.getUTCSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+  } catch {
+    return isoString.slice(0, 19);
+  }
 }

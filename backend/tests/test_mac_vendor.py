@@ -7,6 +7,15 @@ from app.integrations.netbox.mac_vendor import (
     normalize_mac_address,
 )
 
+from manuf import manuf
+
+
+def test_check_manuf() -> None:
+    p = manuf.MacParser(update=True)
+    mac = "74:AD:98:72:00:00"
+
+    print(p.get_manuf(mac), p.get_comment(mac))
+
 
 def test_normalize_mac_address_accepts_common_formats() -> None:
     assert normalize_mac_address("0011.2233.4455") == "00:11:22:33:44:55"

@@ -10,7 +10,9 @@ router = APIRouter()
 netbox_service = NetBoxService()
 
 @router.get("/netbox/regions", response_model=NetBoxRegionsResponse)
-async def get_regions() -> NetBoxRegionsResponse:
+async def get_regions(
+    _: Annotated[dict, Depends(get_current_user)]
+) -> NetBoxRegionsResponse:
     return await netbox_service.fetch_all()
 
 

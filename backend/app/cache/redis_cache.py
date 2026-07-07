@@ -1,20 +1,23 @@
 import json
+import logging
 from typing import Any
 
 import redis.asyncio as redis
 
-from app.core.config import Settings
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class JsonRedisCache:
     def __init__(self) -> None:
 
-        self.settings = Settings()
+        self.settings = get_settings()
         self.enabled = bool(self.settings.redis_url)
         self.client: redis.Redis | None = None
 
         if self.enabled:
-            print("enable redis cache")
+            logger.info("enable redis cache")
             self.client = redis.from_url(
                 self.settings.redis_url,
                 decode_responses=True,
@@ -32,10 +35,10 @@ class JsonRedisCache:
 
     async def set_json(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
         if not self.client:
-            print("redis client is disabled")
+            logger.debug("redis client is disabled")
             return
 
-        print("redis set:", key, "ttl:", ttl_seconds)
+        logger.debug("redis set: %s ttl: %d", key, ttl_seconds)
 
         result = await self.client.set(
             key,
@@ -43,7 +46,7 @@ class JsonRedisCache:
             ex=ttl_seconds,
         )
 
-        print("redis set result:", result)
+        logger.debug("redis set result: %s", result)
 
     async def delete(self, key: str) -> None:
         if self.client:

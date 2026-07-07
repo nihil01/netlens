@@ -1,7 +1,7 @@
 from app.core.config import Settings
 from app.integrations.netbox.service import NetBoxService
 from app.integrations.opensearch.service import OpenSearchActivityService
-from app.ip_intelligence.schemas import IntegrationStatus, UnifiedActivityEvent
+from app.ip_intelligence.schemas import IntegrationStatus
 from app.scanner.scheduler import ScannerScheduler
 
 
@@ -28,85 +28,58 @@ def test_netbox_mapping_extracts_device_site_region_and_interfaces() -> None:
     assert context.interfaces == [{"name": "Gi1/0/1"}]
 
 
-def test_opensearch_query_template_uses_configured_source_mapping_fields() -> None:
-    service = OpenSearchActivityService(Settings(opensearch_url="https://os.example.com:9200"))
-    mapping = service._source_mappings()[0]
-    query = service.build_ip_logs_query(mapping=mapping, ip="10.1.1.10")
+def test_opensearch_query_template_uses_configured_fields() -> None:
+    settings = Settings(
+        opensearch_url="https://os.example.com:9200",
+        opensearch_index_pattern="checkpoint-*,fmc-*",
+        opensearch_source_ip_fields=["src_ip"],
+        opensearch_destination_ip_fields=["dst_ip"],
+        opensearch_destination_port_field="dst_port",
+        opensearch_action_field="action",
+    )
+    query = OpenSearchActivityService(settings).build_ip_activity_query("10.1.1.10")
 
     assert query["query"]["bool"]["filter"][0]["range"]["@timestamp"]["gte"] == "now-24h"
-    assert {"term": {"source.ip": "10.1.1.10"}} in query["query"]["bool"]["should"]
-    assert {"term": {"destination.ip": "10.1.1.10"}} in query["query"]["bool"]["should"]
-    assert query["query"]["bool"]["minimum_should_match"] == 1
-    assert "source.ip" in query["_source"]["includes"]
-    assert "destination.port" in query["_source"]["includes"]
+    assert {"term": {"src_ip": "10.1.1.10"}} in query["query"]["bool"]["should"]
+    assert {"term": {"dst_ip": "10.1.1.10"}} in query["query"]["bool"]["should"]
+    aggs = query["aggs"]["as_source"]["aggs"]["top_destinations"]
+    assert aggs["terms"]["field"] == "dst_ip"
+    assert aggs["aggs"]["top_port"]["terms"]["field"] == "dst_port"
+    assert "action" in query["aggs"]["security_events"]["filter"]["terms"]
 
 
-def test_opensearch_query_applies_directional_filters() -> None:
+def test_opensearch_response_maps_internal_external_and_security_counts() -> None:
     service = OpenSearchActivityService(Settings(opensearch_url="https://os.example.com:9200"))
-    mapping = service._source_mappings()[0]
-    query = service.build_ip_logs_query(
-        mapping=mapping,
-        ip="10.1.1.10",
-        src_ip="10.1.1.10",
-        dst_ip="8.8.8.8",
-        dst_port=53,
-    )
-
-    bool_query = query["query"]["bool"]
-    assert {
-        "bool": {
-            "should": [{"term": {"source.ip": "10.1.1.10"}}],
-            "minimum_should_match": 1,
-        }
-    } in bool_query["filter"]
-    assert {
-        "bool": {
-            "should": [{"term": {"destination.ip": "8.8.8.8"}}],
-            "minimum_should_match": 1,
-        }
-    } in bool_query["filter"]
-    assert {
-        "bool": {
-            "should": [{"term": {"destination.port": 53}}],
-            "minimum_should_match": 1,
-        }
-    } in bool_query["filter"]
-    assert "should" not in bool_query
-
-
-def test_opensearch_events_map_internal_external_and_security_counts() -> None:
-    service = OpenSearchActivityService(Settings(opensearch_url="https://os.example.com:9200"))
-    summary = service._build_summary_from_events(
-        ip="10.1.1.10",
+    summary = service._map_response(
+        {
+            "aggregations": {
+                "as_source": {
+                    "top_destinations": {
+                        "buckets": [
+                            {
+                                "key": "10.10.10.20",
+                                "doc_count": 7,
+                                "top_port": {"buckets": [{"key": 443}]},
+                            },
+                            {
+                                "key": "8.8.8.8",
+                                "doc_count": 3,
+                                "top_port": {"buckets": [{"key": 53}]},
+                            },
+                        ]
+                    }
+                },
+                "security_events": {"doc_count": 2},
+            }
+        },
         window="24h",
-        events=[
-            UnifiedActivityEvent(
-                source_name="firepower",
-                index="firepower-1",
-                source_ip="10.1.1.10",
-                destination_ip="10.10.10.20",
-                destination_port=443,
-                action="allow",
-            ),
-            UnifiedActivityEvent(
-                source_name="firepower",
-                index="firepower-1",
-                source_ip="10.1.1.10",
-                destination_ip="8.8.8.8",
-                destination_port=53,
-                action="blocked",
-            ),
-        ],
     )
 
-    assert summary.internal_connections == 1
-    assert summary.external_connections == 1
-    assert summary.security_events == 1
+    assert summary.internal_connections == 7
+    assert summary.external_connections == 3
+    assert summary.security_events == 2
     assert summary.top_internal_destinations[0].ip == "10.10.10.20"
     assert summary.top_external_destinations[0].ip == "8.8.8.8"
-    assert summary.top_external_ports[0].port == 53
-    assert summary.source_stats == {"firepower": 2}
-    assert summary.index_stats == {"firepower-1": 2}
 
 
 def test_scanner_scheduler_does_not_start_when_disabled() -> None:

@@ -10,7 +10,6 @@ class Settings(BaseSettings):
 
     environment: str = "local"
     log_level: str = "INFO"
-    database_url: str = "postgresql+asyncpg://netlens:netlens@localhost:5432/netlens"
     redis_url: str = "redis://localhost:6379/0"
     netbox_device_cache_ttl_seconds: int = 3600
 
@@ -23,24 +22,31 @@ class Settings(BaseSettings):
         ]
     )
 
-
+    # --- Auth / Keycloak ---
     auth_enabled: bool = False
-    keycloak_issuer_url: AnyHttpUrl | None = None
-    keycloak_audience: str = "netlens-api"
+    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080"
+    keycloak_client_id: str = "netlens"
+    keycloak_audience: str = "netlens"
+    keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])
 
-    netbox_token: str = ""
-    netbox_url: str | None = None
+    # --- NetBox ---
+    netbox_token: str = "4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4"
+    netbox_url: str | None = "https://net-mgmt.taxes.gov.az:5050"
     netbox_verify_ssl: bool = False
     netbox_timeout_seconds: float = 15.0
 
-    opensearch_url: AnyHttpUrl | None = None
-    opensearch_username: str | None = None
-    opensearch_password: str | None = None
-    opensearch_verify_ssl: bool = True
-    opensearch_index_pattern: str = "logs-*"
-    opensearch_firepower_index_pattern: str = "logs-*"
+    # --- OpenSearch ---
+    opensearch_url: AnyHttpUrl | None = "https://10.22.10.186:9200"
+    opensearch_username: str | None = "admin"
+    opensearch_password: str | None = "Orxan20052004!"
+    opensearch_verify_ssl: bool = False
+
+    opensearch_cisco_asa_index_pattern: str = "asa-*"
+    opensearch_firepower_index_pattern: str = "firepower-*"
     opensearch_fmc_estreamer_index_pattern: str = "fmc-estreamer-*"
+    opensearch_cisco_user_activity_index_pattern: str = "fmc-useractivity-*"
     opensearch_checkpoint_index_pattern: str = "checkpoint-*"
+
     opensearch_timeout_seconds: float = 20.0
     opensearch_timestamp_field: str = "@timestamp"
     opensearch_source_ip_fields: list[str] = Field(
@@ -59,7 +65,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
     )
 
-
+    # --- Scanner ---
     scanner_schedule_enabled: bool = True
     scanner_schedule_cron: str = "12 15 * * *"
     scanner_default_scope: str = "netbox-management"

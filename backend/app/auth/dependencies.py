@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -43,3 +45,15 @@ async def get_current_user(
     realm_roles = payload.get("realm_access", {}).get("roles", [])
     payload["roles"] = realm_roles
     return payload
+
+
+def require_role(*required_roles: str) -> Any:
+    async def _check(user: Annotated[dict, Depends(get_current_user)]) -> dict:
+        user_roles = set(user.get("roles", []))
+        if not set(required_roles).issubset(user_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires roles: {', '.join(required_roles)}",
+            )
+        return user
+    return _check
