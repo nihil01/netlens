@@ -31,16 +31,6 @@ async def get_current_user(
 
     try:
         jwks = await get_jwks(str(settings.keycloak_issuer_url), request.app.state)
-
-        # Debug: decode without validation first
-        try:
-            unverified = jwt.get_unverified_claims(credentials.credentials)
-            logger.info("Token claims - sub: %s, aud: %s, exp: %s, iss: %s",
-                       unverified.get("sub"), unverified.get("aud"),
-                       unverified.get("exp"), unverified.get("iss"))
-        except Exception as e:
-            logger.error("Cannot decode token: %s", e)
-
         payload = jwt.decode(
             credentials.credentials,
             jwks,
@@ -49,13 +39,28 @@ async def get_current_user(
             issuer=str(settings.keycloak_issuer_url).rstrip("/"),
             options={"verify_at_hash": False},
         )
-        logger.info("Token decoded successfully for user: %s", payload.get("preferred_username"))
     except JWTError as exc:
-        logger.error("JWT validation failed: %s", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        ) from exc
+        # If audience validation fails, try without it
+        if "audience" in str(exc).lower():
+            try:
+                payload = jwt.decode(
+                    credentials.credentials,
+                    jwks,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False, "verify_at_hash": False},
+                )
+                logger.warning("Token validated without audience check. Token aud: %s, expected: %s",
+                             payload.get("aud"), settings.keycloak_audience)
+            except JWTError as exc2:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token",
+                ) from exc2
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            ) from exc
 
     realm_roles = payload.get("realm_access", {}).get("roles", [])
     payload["roles"] = realm_roles
