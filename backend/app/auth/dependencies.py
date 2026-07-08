@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -8,6 +9,8 @@ from jose import JWTError, jwt
 
 from app.auth.jwks import get_jwks
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -36,7 +39,9 @@ async def get_current_user(
             issuer=str(settings.keycloak_issuer_url).rstrip("/"),
             options={"verify_at_hash": False},
         )
+        logger.info("Token decoded successfully for user: %s", payload.get("preferred_username"))
     except JWTError as exc:
+        logger.error("JWT validation failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
