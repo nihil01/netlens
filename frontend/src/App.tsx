@@ -9,10 +9,13 @@ import {
   GitBranch,
   Layers3,
   Loader2,
+  LogIn,
+  LogOut,
   MapPinned,
   Radar,
   Search,
   Server,
+  User,
   Waypoints,
 } from 'lucide-react';
 import {
@@ -26,6 +29,7 @@ import {
   type NetBoxInterface,
   type NetBoxSite,
 } from './api';
+import { isAuthenticated, getUser, login, logout, initAuth } from './auth';
 import { DeviceDetailPanel } from './components/DeviceDetailPanel';
 import { DeviceRow } from './components/DeviceRow';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -62,6 +66,17 @@ function getDefaultTimeTo() {
 }
 
 export function App() {
+  const [authReady, setAuthReady] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(isAuthenticated());
+  const user = getUser();
+
+  useEffect(() => {
+    initAuth().then(() => {
+      setLoggedIn(isAuthenticated());
+      setAuthReady(true);
+    });
+  }, []);
+
   // --- IP Analysis state ---
   const [searchSrcIp, setSearchSrcIp] = useState('');
   const [searchDstIp, setSearchDstIp] = useState('');
@@ -279,10 +294,29 @@ export function App() {
                 <p className="text-sm text-gray-500">Şəbəkə Auditi · NetBox · OpenSearch</p>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><MapPinned size={14} /> {data?.regions.length ?? 0} region</span>
-              <span className="flex items-center gap-1"><Layers3 size={14} /> {data?.sites.length ?? 0} sahə</span>
-              <span className="flex items-center gap-1"><Server size={14} /> {data?.devices.length ?? 0} qurğu</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 text-xs text-gray-400">
+                <span className="flex items-center gap-1"><MapPinned size={14} /> {data?.regions.length ?? 0} region</span>
+                <span className="flex items-center gap-1"><Layers3 size={14} /> {data?.sites.length ?? 0} sahə</span>
+                <span className="flex items-center gap-1"><Server size={14} /> {data?.devices.length ?? 0} qurğu</span>
+              </div>
+              {authReady && (
+                loggedIn ? (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-sm text-gray-600">
+                      <User size={14} />
+                      {user?.preferred_username ?? user?.sub}
+                    </span>
+                    <button className={ui.ghostButton} onClick={logout}>
+                      <LogOut size={14} /> Çıxış
+                    </button>
+                  </div>
+                ) : (
+                  <button className={ui.primaryButton} onClick={login}>
+                    <LogIn size={14} /> Giriş
+                  </button>
+                )
+              )}
             </div>
           </div>
         </motion.header>

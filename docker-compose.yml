@@ -77,6 +77,9 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://10.22.10.185:9090/api}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://net-mgmt.taxes.gov.az:8080}
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-netlens}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-netlens}
     ports:
       - "${FRONTEND_PORT:-9091}:80"
     depends_on:
