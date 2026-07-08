@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     @classmethod
-    def model_validate(cls, obj: Any, **kwargs: Any) -> Settings:
+    def model_validate(cls, obj: Any, **kwargs: Any) -> "Settings":
         instance = super().model_validate(obj, **kwargs)
         if isinstance(instance.cors_origins, str):
             instance.cors_origins = _parse_cors(instance.cors_origins)
