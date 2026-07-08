@@ -121,6 +121,11 @@ export async function handleCallback(): Promise<boolean> {
   const code = params.get('code');
   const error = params.get('error');
 
+  // Clear URL parameters immediately to prevent loop
+  if (code || error) {
+    window.history.replaceState({}, document.title, REDIRECT_URI);
+  }
+
   if (error) {
     console.error('Keycloak error:', error);
     return false;
@@ -159,7 +164,6 @@ export async function handleCallback(): Promise<boolean> {
     tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 min buffer
 
     sessionStorage.removeItem('pkce_verifier');
-    window.history.replaceState({}, document.title, REDIRECT_URI);
 
     return true;
   } catch (err) {
