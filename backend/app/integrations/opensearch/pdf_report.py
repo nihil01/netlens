@@ -33,14 +33,22 @@ AZERBAIJANI_FONT = "Helvetica"  # fallback if nothing found
 AZERBAIJANI_FONT_BOLD = "Helvetica-Bold"
 
 _FONT_CANDIDATES = [
-    # macOS system fonts (Arial covers Turkish / Azerbaijani well)
+    # macOS system fonts
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    # Linux common locations
+    # Linux - Liberation (Arial-compatible)
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf",
+    # Linux - DejaVu
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+    # Linux - generic
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
 ]
 
 
@@ -60,10 +68,13 @@ def _register_font() -> None:
     # Resolve the actual registered names
     registered = pdfmetrics.getRegisteredFontNames()
 
-    # Try preferred fonts (Arial family first, then DejaVu)
+    # Try preferred fonts (Arial-compatible first, then DejaVu)
     for regular, bold in [
         ("Arial", "Arial Bold"),
+        ("LiberationSans-Regular", "LiberationSans-Bold"),
+        ("LiberationSans", "LiberationSans-Bold"),
         ("DejaVuSans", "DejaVuSans-Bold"),
+        ("FreeSans", "FreeSansBold"),
     ]:
         if regular in registered:
             AZERBAIJANI_FONT = regular
