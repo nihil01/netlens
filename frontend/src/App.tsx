@@ -76,11 +76,6 @@ export function App() {
     initAuth().then((isAuth) => {
       setLoggedIn(isAuth);
       setAuthReady(true);
-
-      // If auth is required but not authenticated, redirect to Keycloak
-      if (AUTH_ENABLED && !isAuth) {
-        login();
-      }
     });
   }, []);
 

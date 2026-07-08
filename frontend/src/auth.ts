@@ -15,16 +15,10 @@ interface TokenResponse {
   token_type: string;
 }
 
-interface UserInfo {
-  sub: string;
-  preferred_username?: string;
-  email?: string;
-  realm_access?: { roles: string[] };
-}
-
 let currentToken: string | null = null;
 let tokenExpiry: number = 0;
 let authProcessing = false;
+let initDone = false;
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(32);
@@ -33,15 +27,13 @@ function generateCodeVerifier(): string {
 }
 
 async function generateCodeChallenge(verifier: string): Promise<string> {
-  // Try native crypto.subtle first (works on HTTPS and localhost)
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const encoder = new TextEncoder();
     const data = encoder.encode(verifier);
     const hash = await crypto.subtle.digest('SHA-256', data);
     return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
-
-  // Fallback: use plain "plain" method (Keycloak supports it)
+  // Fallback for HTTP - use plain method
   return verifier;
 }
 
@@ -57,10 +49,9 @@ export function getToken(): string | null {
   return currentToken;
 }
 
-export function getUser(): UserInfo | null {
+export function getUser(): any {
   const token = getToken();
   if (!token) return null;
-
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     return {
@@ -79,25 +70,22 @@ export function hasRole(role: string): boolean {
   return user?.realm_access?.roles?.includes(role) ?? false;
 }
 
-export async function login(): Promise<void> {
-  if (authProcessing) return; // Prevent loop
-  authProcessing = true;
+export function login(): void {
+  if (authProcessing) return;
 
   const verifier = generateCodeVerifier();
-  const challenge = await generateCodeChallenge(verifier);
-
   sessionStorage.setItem('pkce_verifier', verifier);
-  sessionStorage.setItem('auth_redirect', 'true');
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
     response_type: 'code',
     scope: 'openid profile email',
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
+    code_challenge: verifier, // Use plain method for HTTP
+    code_challenge_method: 'plain',
   });
 
+  console.log('Redirecting to Keycloak...');
   window.location.href = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth?${params.toString()}`;
 }
 
@@ -109,6 +97,8 @@ export async function handleCallback(): Promise<boolean> {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const error = params.get('error');
+
+    console.log('Callback received:', { code: code ? 'yes' : 'no', error });
 
     // Clear URL immediately
     if (code || error) {
@@ -129,6 +119,7 @@ export async function handleCallback(): Promise<boolean> {
     }
 
     const tokenEndpoint = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+    console.log('Exchanging code for token...');
 
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
@@ -142,6 +133,8 @@ export async function handleCallback(): Promise<boolean> {
       }),
     });
 
+    console.log('Token response status:', response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Token exchange failed:', response.status, errorText);
@@ -149,11 +142,12 @@ export async function handleCallback(): Promise<boolean> {
     }
 
     const data: TokenResponse = await response.json();
+    console.log('Token received successfully');
+
     currentToken = data.access_token;
     tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
 
     sessionStorage.removeItem('pkce_verifier');
-    sessionStorage.removeItem('auth_redirect');
 
     return true;
   } catch (err) {
@@ -168,7 +162,6 @@ export async function logout(): Promise<void> {
   currentToken = null;
   tokenExpiry = 0;
   sessionStorage.removeItem('pkce_verifier');
-  sessionStorage.removeItem('auth_redirect');
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
@@ -179,11 +172,18 @@ export async function logout(): Promise<void> {
 }
 
 export async function initAuth(): Promise<boolean> {
+  // Prevent multiple init calls
+  if (initDone) return isAuthenticated();
+  initDone = true;
+
   const params = new URLSearchParams(window.location.search);
 
   // If we have a code, exchange it for token
   if (params.has('code')) {
-    return await handleCallback();
+    console.log('Found code in URL, exchanging...');
+    const result = await handleCallback();
+    console.log('Token exchange result:', result);
+    return result;
   }
 
   // If we have an error, clear it
