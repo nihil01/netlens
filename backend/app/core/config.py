@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # --- Auth / Keycloak ---
     auth_enabled: bool = False
-    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080/realms/netlens"
+    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080/realms/dvx"
     keycloak_client_id: str = "netlens"
     keycloak_audience: str = "netlens"
     keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])

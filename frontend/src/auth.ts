@@ -4,8 +4,8 @@
  * Handles PKCE flow for SPA authentication.
  */
 
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://net-mgmt.taxes.gov.az:8080';
-const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'netlens';
+const KEYCLOAK_URL = 'http://net-mgmt.taxes.gov.az:8080';
+const KEYCLOAK_REALM = 'dvx';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'netlens';
 const REDIRECT_URI = window.location.origin;
 
