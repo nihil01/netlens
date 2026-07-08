@@ -1,8 +1,22 @@
 from functools import lru_cache
+import json
 from typing import Literal
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_cors(value: str | list[str]) -> list[str]:
+    """Parse CORS origins from JSON string or list."""
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [v.strip() for v in value.split(",") if v.strip()]
 
 
 class Settings(BaseSettings):
@@ -17,14 +31,21 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            "http://localhost:5174",
-            "http://127.0.0.1:5174",
+            "http://localhost:80",
+            "http://localhost",
         ]
     )
 
+    @classmethod
+    def model_validate(cls, obj: Any, **kwargs: Any) -> Settings:
+        instance = super().model_validate(obj, **kwargs)
+        if isinstance(instance.cors_origins, str):
+            instance.cors_origins = _parse_cors(instance.cors_origins)
+        return instance
+
     # --- Auth / Keycloak ---
     auth_enabled: bool = False
-    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080"
+    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080/realms/netlens"
     keycloak_client_id: str = "netlens"
     keycloak_audience: str = "netlens"
     keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])
