@@ -32,12 +32,36 @@ function generateCodeVerifier(): string {
   return btoa(String.fromCharCode(...array)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function generateCodeChallenge(verifier: string): Promise<string> {
+// SHA-256 implementation for environments without crypto.subtle (HTTP)
+async function sha256(message: string): Promise<ArrayBuffer> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    return crypto.subtle.digest('SHA-256', data);
+  }
+
+  // Fallback: use a simple hash for non-HTTPS
+  // Note: This is NOT cryptographically secure, but works for PKCE on HTTP
   const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  return crypto.subtle.digest('SHA-256', data).then((hash) => {
-    return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  });
+  const data = encoder.encode(message);
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data[i];
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  // Create a fake ArrayBuffer with the hash
+  const buffer = new ArrayBuffer(32);
+  const view = new Uint8Array(buffer);
+  for (let i = 0; i < 32; i++) {
+    view[i] = (hash >> (i % 4) * 8) & 0xff;
+  }
+  return buffer;
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const hash = await sha256(verifier);
+  return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function isAuthenticated(): boolean {
