@@ -1,7 +1,6 @@
 /**
  * Keycloak OIDC Client for NetLens
- *
- * Handles PKCE flow for SPA authentication.
+ * PKCE flow for SPA authentication.
  */
 
 const KEYCLOAK_URL = 'http://net-mgmt.taxes.gov.az:8080';
@@ -25,6 +24,7 @@ interface UserInfo {
 
 let currentToken: string | null = null;
 let tokenExpiry: number = 0;
+let authProcessing = false;
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(32);
@@ -32,36 +32,17 @@ function generateCodeVerifier(): string {
   return btoa(String.fromCharCode(...array)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// SHA-256 implementation for environments without crypto.subtle (HTTP)
-async function sha256(message: string): Promise<ArrayBuffer> {
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  // Try native crypto.subtle first (works on HTTPS and localhost)
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    return crypto.subtle.digest('SHA-256', data);
+    const data = encoder.encode(verifier);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
-  // Fallback: use a simple hash for non-HTTPS
-  // Note: This is NOT cryptographically secure, but works for PKCE on HTTP
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data[i];
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  // Create a fake ArrayBuffer with the hash
-  const buffer = new ArrayBuffer(32);
-  const view = new Uint8Array(buffer);
-  for (let i = 0; i < 32; i++) {
-    view[i] = (hash >> (i % 4) * 8) & 0xff;
-  }
-  return buffer;
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const hash = await sha256(verifier);
-  return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  // Fallback: use plain "plain" method (Keycloak supports it)
+  return verifier;
 }
 
 export function isAuthenticated(): boolean {
@@ -99,10 +80,14 @@ export function hasRole(role: string): boolean {
 }
 
 export async function login(): Promise<void> {
+  if (authProcessing) return; // Prevent loop
+  authProcessing = true;
+
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
 
   sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('auth_redirect', 'true');
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
@@ -117,29 +102,32 @@ export async function login(): Promise<void> {
 }
 
 export async function handleCallback(): Promise<boolean> {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const error = params.get('error');
-
-  // Clear URL parameters immediately to prevent loop
-  if (code || error) {
-    window.history.replaceState({}, document.title, REDIRECT_URI);
-  }
-
-  if (error) {
-    console.error('Keycloak error:', error);
-    return false;
-  }
-
-  if (!code) return false;
-
-  const verifier = sessionStorage.getItem('pkce_verifier');
-  if (!verifier) {
-    console.error('No PKCE verifier found');
-    return false;
-  }
+  if (authProcessing) return false;
+  authProcessing = true;
 
   try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+
+    // Clear URL immediately
+    if (code || error) {
+      window.history.replaceState({}, document.title, REDIRECT_URI);
+    }
+
+    if (error) {
+      console.error('Keycloak error:', error);
+      return false;
+    }
+
+    if (!code) return false;
+
+    const verifier = sessionStorage.getItem('pkce_verifier');
+    if (!verifier) {
+      console.error('No PKCE verifier found');
+      return false;
+    }
+
     const tokenEndpoint = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
     const response = await fetch(tokenEndpoint, {
@@ -155,26 +143,32 @@ export async function handleCallback(): Promise<boolean> {
     });
 
     if (!response.ok) {
-      console.error('Token exchange failed:', response.status);
+      const errorText = await response.text();
+      console.error('Token exchange failed:', response.status, errorText);
       return false;
     }
 
     const data: TokenResponse = await response.json();
     currentToken = data.access_token;
-    tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 min buffer
+    tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
 
     sessionStorage.removeItem('pkce_verifier');
+    sessionStorage.removeItem('auth_redirect');
 
     return true;
   } catch (err) {
     console.error('Token exchange error:', err);
     return false;
+  } finally {
+    authProcessing = false;
   }
 }
 
 export async function logout(): Promise<void> {
   currentToken = null;
   tokenExpiry = 0;
+  sessionStorage.removeItem('pkce_verifier');
+  sessionStorage.removeItem('auth_redirect');
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
@@ -184,10 +178,20 @@ export async function logout(): Promise<void> {
   window.location.href = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout?${params.toString()}`;
 }
 
-// Check for callback on page load
-export async function initAuth(): Promise<void> {
+export async function initAuth(): Promise<boolean> {
   const params = new URLSearchParams(window.location.search);
-  if (params.has('code') || params.has('error')) {
-    await handleCallback();
+
+  // If we have a code, exchange it for token
+  if (params.has('code')) {
+    return await handleCallback();
   }
+
+  // If we have an error, clear it
+  if (params.has('error')) {
+    window.history.replaceState({}, document.title, REDIRECT_URI);
+    return false;
+  }
+
+  // Check if we already have a valid token
+  return isAuthenticated();
 }

@@ -69,16 +69,15 @@ const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
 
 export function App() {
   const [authReady, setAuthReady] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(isAuthenticated());
+  const [loggedIn, setLoggedIn] = useState(false);
   const user = getUser();
 
   useEffect(() => {
-    initAuth().then(() => {
-      const isAuth = isAuthenticated();
+    initAuth().then((isAuth) => {
       setLoggedIn(isAuth);
       setAuthReady(true);
 
-      // If auth is required but user is not logged in, redirect to Keycloak
+      // If auth is required but not authenticated, redirect to Keycloak
       if (AUTH_ENABLED && !isAuth) {
         login();
       }
