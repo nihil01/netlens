@@ -15,10 +15,25 @@ interface TokenResponse {
   token_type: string;
 }
 
-let currentToken: string | null = null;
-let tokenExpiry: number = 0;
+let currentToken: string | null = localStorage.getItem('auth_token');
+let tokenExpiry: number = parseInt(localStorage.getItem('auth_token_expiry') || '0', 10);
 let authProcessing = false;
 let initDone = false;
+
+function saveToken(token: string, expiresIn: number) {
+  currentToken = token;
+  tokenExpiry = Date.now() + (expiresIn * 1000) - 60000;
+  localStorage.setItem('auth_token', token);
+  localStorage.setItem('auth_token_expiry', tokenExpiry.toString());
+}
+
+function clearToken() {
+  currentToken = null;
+  tokenExpiry = 0;
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_token_expiry');
+  sessionStorage.removeItem('pkce_verifier');
+}
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(32);
@@ -144,9 +159,7 @@ export async function handleCallback(): Promise<boolean> {
     const data: TokenResponse = await response.json();
     console.log('Token received successfully');
 
-    currentToken = data.access_token;
-    tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
-
+    saveToken(data.access_token, data.expires_in);
     sessionStorage.removeItem('pkce_verifier');
 
     return true;
@@ -159,9 +172,7 @@ export async function handleCallback(): Promise<boolean> {
 }
 
 export async function logout(): Promise<void> {
-  currentToken = null;
-  tokenExpiry = 0;
-  sessionStorage.removeItem('pkce_verifier');
+  clearToken();
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
