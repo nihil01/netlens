@@ -43,7 +43,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netlens}:${POSTGRES_PASSWORD:-netlens}@postgres:5432/${POSTGRES_DB:-netlens}
       REDIS_URL: redis://:${REDIS_PASSWORD:-netlens}@redis:6380/0
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80","http://10.22.10.185:9091","http://10.22.10.185"]}
-      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://net-mgmt.taxes.gov.az:8080/realms/netlens}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-netlens}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-netlens}
@@ -80,6 +80,7 @@ services:
         VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://net-mgmt.taxes.gov.az:8080}
         VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-netlens}
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-netlens}
+        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-true}
     ports:
       - "${FRONTEND_PORT:-9091}:80"
     depends_on:

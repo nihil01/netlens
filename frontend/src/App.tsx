@@ -65,6 +65,8 @@ function getDefaultTimeTo() {
   return '18:00';
 }
 
+const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === 'true';
+
 export function App() {
   const [authReady, setAuthReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(isAuthenticated());
@@ -72,8 +74,14 @@ export function App() {
 
   useEffect(() => {
     initAuth().then(() => {
-      setLoggedIn(isAuthenticated());
+      const isAuth = isAuthenticated();
+      setLoggedIn(isAuth);
       setAuthReady(true);
+
+      // If auth is required but user is not logged in, redirect to Keycloak
+      if (AUTH_ENABLED && !isAuth) {
+        login();
+      }
     });
   }, []);
 
@@ -280,6 +288,35 @@ export function App() {
 
   const hasSearch = submittedFilters !== null;
   const canSearch = (searchSrcIp.trim() || searchDstIp.trim()) && dateFrom && timeFrom && dateTo && timeTo;
+
+  // Show loading while checking auth
+  if (!authReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="mx-auto animate-spin text-blue-600" size={40} />
+          <p className="mt-4 text-sm text-gray-500">Yüklənir...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If auth is required but not authenticated, show login prompt
+  if (AUTH_ENABLED && !loggedIn) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-lg">
+          <img src="/logo.png" alt="Logo" className="mx-auto mb-4 h-16 w-16 object-contain" />
+          <h1 className="text-xl font-bold text-gray-900">NetLens</h1>
+          <p className="mt-2 text-sm text-gray-500">Şəbəkə Auditi · NetBox · OpenSearch</p>
+          <p className="mt-4 text-sm text-gray-600">Daxil olmaq üçün Keycloak-a keçin</p>
+          <button className={cn(ui.primaryButton, 'mt-4')} onClick={login}>
+            <LogIn size={16} /> Giriş et
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>
