@@ -174,10 +174,20 @@ export type NetBoxDeviceDetail = NetBoxDevice & {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '');
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` };
+  }
+  return {};
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`);
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: getAuthHeaders(),
+    });
   } catch {
     throw new Error('API qoşulma xətası');
   }
@@ -274,7 +284,9 @@ export async function exportPdfReport(ip: string, start: string, end: string): P
   const params = new URLSearchParams({ start, end, size: '500' });
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/report.pdf?${params.toString()}`);
+    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/report.pdf?${params.toString()}`, {
+      headers: getAuthHeaders(),
+    });
   } catch {
     throw new Error('API qoşulma xətası');
   }
@@ -302,7 +314,9 @@ export async function exportIpExcel(ip: string, filters: IpSummaryFilters = {}):
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/export.xlsx${query ? `?${query}` : ''}`);
+    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/export.xlsx${query ? `?${query}` : ''}`, {
+      headers: getAuthHeaders(),
+    });
   } catch {
     throw new Error('API qoşulma xətası');
   }
