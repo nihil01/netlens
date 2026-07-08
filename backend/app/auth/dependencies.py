@@ -41,7 +41,20 @@ async def get_current_user(
         )
         logger.info("Token decoded successfully for user: %s", payload.get("preferred_username"))
     except JWTError as exc:
-        logger.error("JWT validation failed: %s", exc)
+        logger.error("JWT validation failed: %s", str(exc))
+        # Try without audience validation for debugging
+        try:
+            payload = jwt.decode(
+                credentials.credentials,
+                jwks,
+                algorithms=["RS256"],
+                options={"verify_aud": False, "verify_at_hash": False},
+            )
+            logger.info("Token decoded (no audience check) for user: %s", payload.get("preferred_username"))
+            logger.info("Token audience: %s", payload.get("aud"))
+            logger.info("Expected audience: %s", settings.keycloak_audience)
+        except JWTError as exc2:
+            logger.error("JWT validation failed even without audience check: %s", str(exc2))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
