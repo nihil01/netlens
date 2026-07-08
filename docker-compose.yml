@@ -44,7 +44,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-netlens}@redis:6380/0
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80","http://10.22.10.185:9091","http://10.22.10.185"]}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://net-mgmt.taxes.gov.az:8080/realms/netlens}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://net-mgmt.taxes.gov.az:8080/realms/dvx}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-netlens}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-netlens}
       NETBOX_TOKEN: ${NETBOX_TOKEN:-4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4}
