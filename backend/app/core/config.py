@@ -1,6 +1,6 @@
 from functools import lru_cache
 import json
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
