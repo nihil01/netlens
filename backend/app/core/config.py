@@ -1,5 +1,5 @@
-from functools import lru_cache
 import json
+from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, Field
@@ -25,12 +25,23 @@ class Settings(BaseSettings):
     environment: str = "local"
     log_level: str = "INFO"
     redis_url: str = "redis://localhost:6379/0"
+    database_url: str = ""
+    database_auto_create_schema: bool = False
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = 600
+    rate_limit_sensitive_requests_per_minute: int = 20
     netbox_device_cache_ttl_seconds: int = 3600
+    inventory_refresh_enabled: bool = True
+    inventory_refresh_cron: str = "*/30 * * * *"
 
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
+            "http://localhost:9090",
+            "http://localhost:9091",
             "http://127.0.0.1:5173",
+            "http://127.0.0.1:9090",
+            "http://127.0.0.1:9091",
             "http://localhost:80",
             "http://localhost",
         ]
@@ -45,21 +56,21 @@ class Settings(BaseSettings):
 
     # --- Auth / Keycloak ---
     auth_enabled: bool = False
-    keycloak_issuer_url: AnyHttpUrl | None = "http://net-mgmt.taxes.gov.az:8080/realms/dvx"
+    keycloak_issuer_url: AnyHttpUrl | None = None
     keycloak_client_id: str = "netlens"
     keycloak_audience: str = "account"
     keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])
 
     # --- NetBox ---
-    netbox_token: str = "4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4"
-    netbox_url: str | None = "https://net-mgmt.taxes.gov.az:5050"
+    netbox_token: str = ""
+    netbox_url: str | None = None
     netbox_verify_ssl: bool = False
     netbox_timeout_seconds: float = 15.0
 
     # --- OpenSearch ---
-    opensearch_url: AnyHttpUrl | None = "https://10.22.10.186:9200"
-    opensearch_username: str | None = "admin"
-    opensearch_password: str | None = "Orxan20052004!"
+    opensearch_url: AnyHttpUrl | None = None
+    opensearch_username: str | None = None
+    opensearch_password: str | None = None
     opensearch_verify_ssl: bool = False
 
     opensearch_cisco_asa_index_pattern: str = "asa-*"
@@ -91,8 +102,53 @@ class Settings(BaseSettings):
     scanner_schedule_cron: str = "12 15 * * *"
     scanner_default_scope: str = "netbox-management"
     scanner_profile: Literal["safe", "normal", "aggressive"] = "safe"
-    scanner_dataset_path: str = "./scanner/net_dataset.json"
+    scanner_dataset_path: str = "app/scanner/net_dataset.json"
     scanner_credentials: list[dict[str, str]] = Field(default_factory=list)
+
+    # --- FMC (Firewall Management Center) ---
+    fmc_url: str = ""
+    fmc_username: str = ""
+    fmc_password: str = ""
+    fmc_verify_ssl: bool = False
+    fmc_timeout_seconds: float = 30.0
+    fmc_max_attempts: int = 5
+    fmc_min_request_interval_seconds: float = 1.0
+    fmc_rate_limit_cooldown_seconds: float = 10.0
+    fmc_raw_response_limit: int = 500
+    fmc_raw_response_max_bytes: int = 262_144
+    fmc_device_health_stale_seconds: int = 900
+    fmc_raw_response_retention_days: int = 14
+    fmc_monitoring_enabled: bool = True
+    fmc_full_scan_enabled: bool = False
+    fmc_full_scan_cron: str = "0 3 * * *"  # daily at 3 AM
+    fmc_discovery_refresh_minutes: int = 30
+    fmc_device_health_refresh_seconds: int = 300
+    fmc_health_history_lookback_seconds: int = 3600
+    fmc_health_history_step_seconds: int = 60
+    fmc_interface_refresh_minutes: int = 60
+    fmc_ha_refresh_seconds: int = 300
+    fmc_alert_refresh_seconds: int = 600
+    fmc_policy_analysis_refresh_hours: int = 24
+    fmc_vpn_refresh_enabled: bool = True
+    fmc_vpn_refresh_minutes: int = 5
+    fmc_vpn_flap_transition_threshold: int = 3
+    fmc_vpn_flap_window_seconds: int = 900
+
+    # --- FMC Audit ---
+    fmc_audit_enabled: bool = True
+    fmc_audit_interval_minutes: int = 5
+    fmc_alert_flap_reopen_threshold: int = 3
+
+    # --- Retention ---
+    retention_enabled: bool = True
+    retention_cron: str = "17 4 * * *"
+    metric_retention_days: int = 90
+    vpn_transition_retention_days: int = 1095
+    health_alert_retention_days: int = 1095
+    collector_run_retention_days: int = 30
+
+    # --- Slack Notifications ---
+    slack_webhook_url: str = ""
 
 
 @lru_cache

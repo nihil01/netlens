@@ -4,11 +4,10 @@ import io
 from typing import Any
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.utils.timezone import to_baku
-
 
 _HEADER_FONT = Font(bold=True, color="FFFFFF", size=10)
 _HEADER_FILL = PatternFill(start_color="1e3a5f", end_color="1e3a5f", fill_type="solid")
@@ -61,20 +60,51 @@ def build_excel_export(
     ws_logs = wb.active
     ws_logs.title = "Logs"
     log_headers = [
-        "Timestamp", "Source", "Index", "Doc ID",
-        "Src IP", "Src Port", "Dst IP", "Dst Port",
-        "Protocol", "Action", "Application", "Rule", "Policy",
-        "User", "Domain", "URL", "Bytes", "Packets", "Direction",
+        "Timestamp",
+        "Source",
+        "Index",
+        "Doc ID",
+        "Src IP",
+        "Src Port",
+        "Dst IP",
+        "Dst Port",
+        "Protocol",
+        "Action",
+        "Application",
+        "Rule",
+        "Policy",
+        "User",
+        "Domain",
+        "URL",
+        "Bytes",
+        "Packets",
+        "Direction",
     ]
     log_rows = []
     for log in logs_data.get("logs", []):
-        log_rows.append([
-            to_baku(log.get("timestamp", "")), log.get("source_name", ""), log.get("index", ""), log.get("id", ""),
-            log.get("source_ip", ""), log.get("source_port", ""), log.get("destination_ip", ""), log.get("destination_port", ""),
-            log.get("protocol", ""), log.get("action", ""), log.get("application", ""), log.get("rule", ""), log.get("policy", ""),
-            log.get("user", ""), log.get("domain", ""), log.get("url", ""),
-            log.get("bytes", ""), log.get("packets", ""), log.get("direction", ""),
-        ])
+        log_rows.append(
+            [
+                to_baku(log.get("timestamp", "")),
+                log.get("source_name", ""),
+                log.get("index", ""),
+                log.get("id", ""),
+                log.get("source_ip", ""),
+                log.get("source_port", ""),
+                log.get("destination_ip", ""),
+                log.get("destination_port", ""),
+                log.get("protocol", ""),
+                log.get("action", ""),
+                log.get("application", ""),
+                log.get("rule", ""),
+                log.get("policy", ""),
+                log.get("user", ""),
+                log.get("domain", ""),
+                log.get("url", ""),
+                log.get("bytes", ""),
+                log.get("packets", ""),
+                log.get("direction", ""),
+            ]
+        )
     _write_rows(ws_logs, log_headers, log_rows)
 
     # --- Sheet 2: Summary ---
@@ -103,13 +133,15 @@ def build_excel_export(
             key = b.get("key", {})
             first_seen = to_baku(b.get("first_seen", {}).get("value_as_string", ""))[:19]
             last_seen = to_baku(b.get("last_seen", {}).get("value_as_string", ""))[:19]
-            dom_rows.append([
-                key.get("domain", ""),
-                key.get("application", ""),
-                b.get("doc_count", 0),
-                first_seen,
-                last_seen,
-            ])
+            dom_rows.append(
+                [
+                    key.get("domain", ""),
+                    key.get("application", ""),
+                    b.get("doc_count", 0),
+                    first_seen,
+                    last_seen,
+                ]
+            )
         _write_rows(ws_dom, ["Domain", "Application", "Count", "First Seen", "Last Seen"], dom_rows)
 
         # Sheet: Top IPs

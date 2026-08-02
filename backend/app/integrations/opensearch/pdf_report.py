@@ -8,20 +8,20 @@ from typing import Any
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-
-from app.utils.timezone import to_baku, now_baku
-from reportlab.lib.units import cm, mm
+from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
     Image,
     PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
 )
+
+from app.utils.timezone import to_baku
 
 logger = logging.getLogger(__name__)
 
@@ -105,33 +105,53 @@ def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
         "title": ParagraphStyle(
-            "Title2", parent=base["Title"],
-            fontSize=22, textColor=PRIMARY, spaceAfter=6, alignment=1,
+            "Title2",
+            parent=base["Title"],
+            fontSize=22,
+            textColor=PRIMARY,
+            spaceAfter=6,
+            alignment=1,
             fontName=AZERBAIJANI_FONT_BOLD,
         ),
         "subtitle": ParagraphStyle(
-            "Subtitle2", parent=base["Normal"],
-            fontSize=12, textColor=GRAY, spaceAfter=20, alignment=1,
+            "Subtitle2",
+            parent=base["Normal"],
+            fontSize=12,
+            textColor=GRAY,
+            spaceAfter=20,
+            alignment=1,
             fontName=AZERBAIJANI_FONT,
         ),
         "section": ParagraphStyle(
-            "Section2", parent=base["Heading2"],
-            fontSize=14, textColor=PRIMARY, spaceBefore=16, spaceAfter=8,
+            "Section2",
+            parent=base["Heading2"],
+            fontSize=14,
+            textColor=PRIMARY,
+            spaceBefore=16,
+            spaceAfter=8,
             fontName=AZERBAIJANI_FONT_BOLD,
         ),
         "body": ParagraphStyle(
-            "Body2", parent=base["Normal"],
-            fontSize=9, textColor=DARK, spaceAfter=4,
+            "Body2",
+            parent=base["Normal"],
+            fontSize=9,
+            textColor=DARK,
+            spaceAfter=4,
             fontName=AZERBAIJANI_FONT,
         ),
         "small": ParagraphStyle(
-            "Small2", parent=base["Normal"],
-            fontSize=7, textColor=GRAY,
+            "Small2",
+            parent=base["Normal"],
+            fontSize=7,
+            textColor=GRAY,
             fontName=AZERBAIJANI_FONT,
         ),
         "footer": ParagraphStyle(
-            "Footer2", parent=base["Normal"],
-            fontSize=7, textColor=GRAY, alignment=1,
+            "Footer2",
+            parent=base["Normal"],
+            fontSize=7,
+            textColor=GRAY,
+            alignment=1,
             fontName=AZERBAIJANI_FONT,
         ),
     }
@@ -167,9 +187,12 @@ def build_pdf_report(
 ) -> io.BytesIO:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=2 * cm, rightMargin=2 * cm,
-        topMargin=2 * cm, bottomMargin=2 * cm,
+        buf,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
     )
 
     s = _styles()
@@ -209,24 +232,31 @@ def build_pdf_report(
         ["İstifadəçilər", f"{user_count:,}"],
     ]
     summary_table = Table(summary_data, colWidths=[5 * cm, 10 * cm])
-    summary_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), AZERBAIJANI_FONT_BOLD),
-        ("FONTNAME", (1, 0), (1, -1), AZERBAIJANI_FONT),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("TEXTCOLOR", (0, 0), (0, -1), GRAY),
-        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#e5e7eb")),
-    ]))
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), AZERBAIJANI_FONT_BOLD),
+                ("FONTNAME", (1, 0), (1, -1), AZERBAIJANI_FONT),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("TEXTCOLOR", (0, 0), (0, -1), GRAY),
+                ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LINEBELOW", (0, -1), (-1, -1), 1, colors.HexColor("#e5e7eb")),
+            ]
+        )
+    )
     elements.append(summary_table)
     elements.append(PageBreak())
 
     # --- Domains ---
     elements.append(Paragraph("DOMENLƏR VƏ TƏTİBIKLƏR", s["section"]))
-    elements.append(Paragraph(
-        "Bu bölmədə IP ünvanının ziyaret etdiyi domenlər və istifadə olunan tətbiqlər göstərilir.",
-        s["body"],
-    ))
+    elements.append(
+        Paragraph(
+            "Bu bölmədə IP ünvanının ziyaret etdiyi domenlər və istifadə olunan "
+            "tətbiqlər göstərilir.",
+            s["body"],
+        )
+    )
     domains = full_data.get("domains", {}).get("buckets", [])
     if domains:
         domain_rows = []
@@ -234,18 +264,22 @@ def build_pdf_report(
             key = b.get("key", {})
             first_seen = to_baku(b.get("first_seen", {}).get("value_as_string", ""))[:16]
             last_seen = to_baku(b.get("last_seen", {}).get("value_as_string", ""))[:16]
-            domain_rows.append([
-                str(i),
-                key.get("domain", "—"),
-                key.get("application", "—"),
-                f"{b.get('doc_count', 0):,}",
-                first_seen,
-                last_seen,
-            ])
-        elements.append(_make_table(
-            ["#", "Domen", "Tətbiq", "Say", "İlk", "Son"],
-            domain_rows,
-        ))
+            domain_rows.append(
+                [
+                    str(i),
+                    key.get("domain", "—"),
+                    key.get("application", "—"),
+                    f"{b.get('doc_count', 0):,}",
+                    first_seen,
+                    last_seen,
+                ]
+            )
+        elements.append(
+            _make_table(
+                ["#", "Domen", "Tətbiq", "Say", "İlk", "Son"],
+                domain_rows,
+            )
+        )
     else:
         elements.append(Paragraph("Domen məlumatı tapılmadı.", s["body"]))
 
@@ -263,13 +297,17 @@ def build_pdf_report(
             ["Kateqoriya", asn_info.get("category", "—")],
         ]
         asn_table = Table(asn_rows, colWidths=[5 * cm, 10 * cm])
-        asn_table.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (0, -1), AZERBAIJANI_FONT_BOLD),
-            ("FONTNAME", (1, 0), (1, -1), AZERBAIJANI_FONT),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("TEXTCOLOR", (0, 0), (0, -1), GRAY),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        asn_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (0, -1), AZERBAIJANI_FONT_BOLD),
+                    ("FONTNAME", (1, 0), (1, -1), AZERBAIJANI_FONT),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("TEXTCOLOR", (0, 0), (0, -1), GRAY),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         elements.append(asn_table)
         elements.append(Spacer(1, 12))
 
@@ -292,16 +330,20 @@ def build_pdf_report(
                 org_val = item.get("asn_org", "—") or "—"
                 vendor_val = item.get("vendor", "—") or "—"
                 country_val = item.get("country_name") or item.get("country") or "—"
-                ip_rows.append([
-                    str(i),
-                    item["key"],
-                    f"AS{asn_val}" if asn_val else "—",
-                    org_val[:25],
-                    vendor_val[:15],
-                    country_val[:20],
-                    f"{item['doc_count']:,}",
-                ])
-            elements.append(_make_table(["#", "IP", "ASN", "Təşkilat", "Vendor", "Ölkə", "Say"], ip_rows))
+                ip_rows.append(
+                    [
+                        str(i),
+                        item["key"],
+                        f"AS{asn_val}" if asn_val else "—",
+                        org_val[:25],
+                        vendor_val[:15],
+                        country_val[:20],
+                        f"{item['doc_count']:,}",
+                    ]
+                )
+            elements.append(
+                _make_table(["#", "IP", "ASN", "Təşkilat", "Vendor", "Ölkə", "Say"], ip_rows)
+            )
             elements.append(Spacer(1, 8))
 
     elements.append(PageBreak())
@@ -310,7 +352,9 @@ def build_pdf_report(
     elements.append(Paragraph("ƏSAS PORTLAR", s["section"]))
     ports = full_data.get("ports", [])
     if ports:
-        port_rows = [[str(i + 1), p["key"], f"{p['doc_count']:,}"] for i, p in enumerate(ports[:40])]
+        port_rows = [
+            [str(i + 1), port["key"], f"{port['doc_count']:,}"] for i, port in enumerate(ports[:40])
+        ]
         elements.append(_make_table(["#", "Port", "Say"], port_rows))
     else:
         elements.append(Paragraph("Port məlumatı tapılmadı.", s["body"]))
@@ -343,10 +387,12 @@ def build_pdf_report(
 
     # --- Footer ---
     elements.append(Spacer(1, 2 * cm))
-    elements.append(Paragraph(
-        f"NetLens Şəbəkə Auditi — {ip} — {start_str} — {end_str}",
-        s["footer"],
-    ))
+    elements.append(
+        Paragraph(
+            f"NetLens Şəbəkə Auditi — {ip} — {start_str} — {end_str}",
+            s["footer"],
+        )
+    )
 
     doc.build(elements)
     buf.seek(0)

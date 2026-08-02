@@ -30,15 +30,15 @@ class Settings(BaseSettings):
     keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])
 
     # --- NetBox ---
-    netbox_token: str = "4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4"
-    netbox_url: str | None = "https://net-mgmt.taxes.gov.az:5050"
+    netbox_token: str = ""
+    netbox_url: str | None = None
     netbox_verify_ssl: bool = False
     netbox_timeout_seconds: float = 15.0
 
     # --- OpenSearch ---
-    opensearch_url: AnyHttpUrl | None = "http://opensearch.e-taxes.gov.az/:5601"
-    opensearch_username: str | None = "admin"
-    opensearch_password: str | None = "Orxan20052004!"
+    opensearch_url: AnyHttpUrl | None = None
+    opensearch_username: str | None = None
+    opensearch_password: str | None = None
     opensearch_verify_ssl: bool = False
 
     opensearch_cisco_asa_index_pattern: str = "cisco-asa-*"

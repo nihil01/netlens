@@ -1,17 +1,36 @@
 # NetLens
 
-NetLens is a Network Intelligence Platform: FastAPI + React UI for IP investigation, NetBox context, OpenSearch activity summaries, and scheduled scanner jobs.
+NetLens is an internal Network Operations Center platform built with FastAPI, React,
+PostgreSQL, Redis, NetBox, Cisco FMC, and OpenSearch integrations.
 
-## Current MVP
+Production-hardening documentation:
 
-- FastAPI backend with `/api/health`.
+- [Technical audit](docs/TECHNICAL_AUDIT.md)
+- [Implementation report](docs/IMPLEMENTATION_REPORT.md)
+- [Environment variables](docs/ENVIRONMENT.md)
+- [Deployment procedure](docs/DEPLOYMENT.md)
+- [NOC runbook](docs/RUNBOOK.md)
+- [Rollback plan](docs/ROLLBACK.md)
+
+The current release is not yet approved for unattended production use. See the
+implementation report for the confirmed FMC permission blocker and remaining validation
+gaps.
+
+## Current capabilities
+
+- FastAPI backend with liveness, readiness, dependency, and Prometheus endpoints.
 - IP Intelligence endpoint: `GET /api/ip/{ip}/summary`.
 - Real read-only NetBox REST API template for IP -> device/site/interface context.
 - Real OpenSearch REST query template for source/destination IP activity summary.
 - Daily scanner scheduling skeleton via APScheduler cron trigger.
 - React + TypeScript UI with IP lookup page.
-- Docker Compose for backend, frontend, PostgreSQL, Redis.
-- Keycloak JWT validation skeleton. Disabled by default for local development.
+- Persisted FMC device metrics, source freshness, HA/VPN transitions, alert lifecycle,
+  audit facts, and bounded raw diagnostics.
+- Independent collectors, local-state dashboards, SSE updates, Operator mode, and NOC
+  Wallboard mode.
+- Docker Compose for backend, frontend, PostgreSQL, and Redis.
+- Strict Keycloak JWT validation and role-protected sensitive operations; authentication
+  remains disabled by default only for local development.
 
 ## Local development
 
@@ -31,7 +50,7 @@ npm install
 npm run dev
 ```
 
-Open: `localhost:5173`
+Open: `http://localhost:5173`
 
 ## Docker
 
@@ -40,7 +59,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open: `localhost:8088`
+Apply the versioned migrations first as described in `docs/DEPLOYMENT.md`, then open the
+port configured by `FRONTEND_PORT` (default `http://localhost`).
 
 ## NetBox integration
 
@@ -94,9 +114,23 @@ SCANNER_SCHEDULE_ENABLED=1
 SCANNER_SCHEDULE_CRON=0 2 * * *
 SCANNER_DEFAULT_SCOPE=netbox-management
 SCANNER_PROFILE=safe
+SCANNER_CREDENTIALS=[{"username":"scanner","password":"change-me"}]
 ```
 
-Timezone is `Asia/Baku`. The scheduled job currently calls `ScannerService.run_scheduled_scan()`, which is the boundary where the real discovery/port/nmap pipeline will be wired next.
+The scheduled job runs the discovery, port check, NetBox sync, and nmap fingerprinting pipeline.
+
+Completed scan profiles are stored in Redis under `scanner:profiles:latest` and exposed by
+`GET /api/scanner/profiles`. A failed run does not replace the last successful snapshot.
+
+NetBox inventory is also refreshed proactively so `/api/netbox/inventory` normally reads from Redis:
+
+```env
+NETBOX_DEVICE_CACHE_TTL_SECONDS=3600
+INVENTORY_REFRESH_ENABLED=true
+INVENTORY_REFRESH_CRON=*/30 * * * *
+```
+
+The scheduler uses the `Asia/Baku` timezone and starts an inventory cache warm-up when the API starts.
 
 ## Security rules
 

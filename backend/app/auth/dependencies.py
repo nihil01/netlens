@@ -40,27 +40,10 @@ async def get_current_user(
             options={"verify_at_hash": False},
         )
     except JWTError as exc:
-        # If audience validation fails, try without it
-        if "audience" in str(exc).lower():
-            try:
-                payload = jwt.decode(
-                    credentials.credentials,
-                    jwks,
-                    algorithms=["RS256"],
-                    options={"verify_aud": False, "verify_at_hash": False},
-                )
-                logger.warning("Token validated without audience check. Token aud: %s, expected: %s",
-                             payload.get("aud"), settings.keycloak_audience)
-            except JWTError as exc2:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token",
-                ) from exc2
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        ) from exc
 
     realm_roles = payload.get("realm_access", {}).get("roles", [])
     payload["roles"] = realm_roles
@@ -76,4 +59,17 @@ def require_role(*required_roles: str) -> Any:
                 detail=f"Requires roles: {', '.join(required_roles)}",
             )
         return user
+
+    return _check
+
+
+def require_any_role(*allowed_roles: str) -> Any:
+    async def _check(user: Annotated[dict, Depends(get_current_user)]) -> dict:
+        if not set(user.get("roles", [])) & set(allowed_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of roles: {', '.join(allowed_roles)}",
+            )
+        return user
+
     return _check

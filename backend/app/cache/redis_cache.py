@@ -23,7 +23,7 @@ class JsonRedisCache:
                 decode_responses=True,
             )
 
-    async def get_json(self, key: str) -> dict[str, Any] | None:
+    async def get_json(self, key: str) -> Any | None:
         if not self.client:
             return None
 
@@ -33,12 +33,17 @@ class JsonRedisCache:
 
         return json.loads(raw)
 
-    async def set_json(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
+    async def set_json(
+        self,
+        key: str,
+        value: Any,
+        ttl_seconds: int | None = None,
+    ) -> None:
         if not self.client:
             logger.debug("redis client is disabled")
             return
 
-        logger.debug("redis set: %s ttl: %d", key, ttl_seconds)
+        logger.debug("redis set: %s ttl: %s", key, ttl_seconds)
 
         result = await self.client.set(
             key,
@@ -48,9 +53,25 @@ class JsonRedisCache:
 
         logger.debug("redis set result: %s", result)
 
-    async def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> int:
         if self.client:
-            await self.client.delete(key)
+            return int(await self.client.delete(key))
+        return 0
+
+    async def delete_prefix(self, prefix: str) -> int:
+        """Delete only keys owned by one integration, without flushing Redis."""
+        if not self.client:
+            return 0
+        deleted = 0
+        batch: list[str] = []
+        async for key in self.client.scan_iter(match=f"{prefix}*"):
+            batch.append(str(key))
+            if len(batch) >= 100:
+                deleted += int(await self.client.delete(*batch))
+                batch.clear()
+        if batch:
+            deleted += int(await self.client.delete(*batch))
+        return deleted
 
     async def close(self) -> None:
         if self.client:

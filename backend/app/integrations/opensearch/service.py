@@ -26,15 +26,13 @@ from app.ip_intelligence.schemas import (
     IntegrationStatus,
     UnifiedActivityEvent,
 )
+from app.utils.cidr import cidr_to_opensearch_filter, is_cidr
 
 
 class OpenSearchActivityService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._internal_networks = [
-            ipaddress.ip_network(cidr)
-            for cidr in settings.internal_cidrs
-        ]
+        self._internal_networks = [ipaddress.ip_network(cidr) for cidr in settings.internal_cidrs]
 
     @classmethod
     def from_settings(cls) -> OpenSearchActivityService:
@@ -82,6 +80,93 @@ class OpenSearchActivityService:
             dst_port=dst_port,
         )
 
+    def build_ip_activity_query(
+        self,
+        ip: str,
+        window: str = "24h",
+    ) -> dict[str, Any]:
+        """Backward-compatible aggregate query used by the IP summary contract."""
+        source_fields = self.settings.opensearch_source_ip_fields
+        destination_fields = self.settings.opensearch_destination_ip_fields
+        destination_port = self.settings.opensearch_destination_port_field
+        action_field = self.settings.opensearch_action_field
+        return {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {
+                            "range": {
+                                self.settings.opensearch_timestamp_field: {
+                                    "gte": f"now-{window}",
+                                    "lte": "now",
+                                }
+                            }
+                        }
+                    ],
+                    "should": [
+                        *({"term": {field: ip}} for field in source_fields),
+                        *({"term": {field: ip}} for field in destination_fields),
+                    ],
+                    "minimum_should_match": 1,
+                }
+            },
+            "aggs": {
+                "as_source": {
+                    "filter": {
+                        "bool": {
+                            "should": [{"term": {field: ip}} for field in source_fields],
+                            "minimum_should_match": 1,
+                        }
+                    },
+                    "aggs": {
+                        "top_destinations": {
+                            "terms": {"field": destination_fields[0], "size": 20},
+                            "aggs": {"top_port": {"terms": {"field": destination_port, "size": 1}}},
+                        }
+                    },
+                },
+                "security_events": {
+                    "filter": {"terms": {action_field: self.settings.opensearch_block_actions}}
+                },
+            },
+        }
+
+    def _map_response(self, data: dict[str, Any], window: str) -> ActivitySummary:
+        """Map the legacy aggregate response without inventing missing counters."""
+        aggregations = data.get("aggregations", {})
+        buckets = aggregations.get("as_source", {}).get("top_destinations", {}).get("buckets", [])
+        internal: list[ActivityCounterparty] = []
+        external: list[ActivityCounterparty] = []
+        internal_count = 0
+        external_count = 0
+        for bucket in buckets:
+            address = str(bucket.get("key", ""))
+            count = int(bucket.get("doc_count", 0))
+            port_buckets = bucket.get("top_port", {}).get("buckets", [])
+            port = int(port_buckets[0]["key"]) if port_buckets else None
+            item = ActivityCounterparty(ip=address, port=port, count=count)
+            try:
+                is_internal = any(
+                    ipaddress.ip_address(address) in network for network in self._internal_networks
+                )
+            except ValueError:
+                is_internal = False
+            if is_internal:
+                internal.append(item)
+                internal_count += count
+            else:
+                external.append(item)
+                external_count += count
+        return ActivitySummary(
+            window=window,
+            internal_connections=internal_count,
+            external_connections=external_count,
+            security_events=int(aggregations.get("security_events", {}).get("doc_count", 0)),
+            top_internal_destinations=internal,
+            top_external_destinations=external,
+        )
+
     # ------------------------------------------------------------------
     # Event helpers
     # ------------------------------------------------------------------
@@ -108,8 +193,8 @@ class OpenSearchActivityService:
         return None
 
     def _counter_to_ports(
-            self,
-            counter: dict[int, int],
+        self,
+        counter: dict[int, int],
     ) -> list[ActivityCounterparty]:
         items = sorted(counter.items(), key=lambda item: item[1], reverse=True)
 
@@ -124,8 +209,8 @@ class OpenSearchActivityService:
         ]
 
     def _counter_to_domains(
-            self,
-            counter: dict[str, int],
+        self,
+        counter: dict[str, int],
     ) -> list[ActivityCounterparty]:
         items = sorted(counter.items(), key=lambda item: item[1], reverse=True)
 
@@ -144,15 +229,15 @@ class OpenSearchActivityService:
     # ------------------------------------------------------------------
 
     async def get_ip_logs(
-            self,
-            ip: str,
-            window: str = "24h",
-            start: str | None = None,
-            end: str | None = None,
-            size_per_source: int = 100,
-            src_ip: str | None = None,
-            dst_ip: str | None = None,
-            dst_port: int | None = None,
+        self,
+        ip: str,
+        window: str = "24h",
+        start: str | None = None,
+        end: str | None = None,
+        size_per_source: int = 100,
+        src_ip: str | None = None,
+        dst_ip: str | None = None,
+        dst_port: int | None = None,
     ) -> dict[str, Any]:
         mappings = self._source_mappings()
         logs: list[dict[str, Any]] = []
@@ -191,31 +276,33 @@ class OpenSearchActivityService:
 
                 hits = data.get("hits", {}).get("hits", [])
 
-                for hit, event in zip(hits, events):
-                    logs.append({
-                        "source_name": event.source_name,
-                        "index": event.index,
-                        "id": hit.get("_id"),
-                        "timestamp": event.timestamp,
-                        "source_ip": event.source_ip,
-                        "source_port": event.source_port,
-                        "destination_ip": event.destination_ip,
-                        "destination_port": event.destination_port,
-                        "protocol": event.protocol,
-                        "action": event.action,
-                        "application": event.application,
-                        "rule": event.rule,
-                        "policy": event.policy,
-                        "user": event.user,
-                        "domain": event.domain,
-                        "url": event.url,
-                        "bytes": event.bytes,
-                        "packets": event.packets,
-                        "direction": event.direction,
-                        "is_source_ip": event.is_source_ip,
-                        "is_destination_ip": event.is_destination_ip,
-                        "raw": event.raw,
-                    })
+                for hit, event in zip(hits, events, strict=False):
+                    logs.append(
+                        {
+                            "source_name": event.source_name,
+                            "index": event.index,
+                            "id": hit.get("_id"),
+                            "timestamp": event.timestamp,
+                            "source_ip": event.source_ip,
+                            "source_port": event.source_port,
+                            "destination_ip": event.destination_ip,
+                            "destination_port": event.destination_port,
+                            "protocol": event.protocol,
+                            "action": event.action,
+                            "application": event.application,
+                            "rule": event.rule,
+                            "policy": event.policy,
+                            "user": event.user,
+                            "domain": event.domain,
+                            "url": event.url,
+                            "bytes": event.bytes,
+                            "packets": event.packets,
+                            "direction": event.direction,
+                            "is_source_ip": event.is_source_ip,
+                            "is_destination_ip": event.is_destination_ip,
+                            "raw": event.raw,
+                        }
+                    )
 
         logs.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
 
@@ -413,7 +500,9 @@ class OpenSearchActivityService:
                     response.raise_for_status()
                     data = response.json()
 
-                    for bucket in data.get("aggregations", {}).get("activity", {}).get("buckets", []):
+                    for bucket in (
+                        data.get("aggregations", {}).get("activity", {}).get("buckets", [])
+                    ):
                         key = (
                             bucket.get("key", {}).get("domain", ""),
                             bucket.get("key", {}).get("application", ""),
@@ -473,57 +562,85 @@ class OpenSearchActivityService:
             {"term": {"source.ip": ip}},
         ]
 
-        # Build additional filters
+        # Build additional filters (supports CIDR notation)
         extra_filters: list[dict[str, Any]] = []
+        src_fields = ["src", "initiator_ip", "original_initiator_ip", "client_ip", "source.ip"]
+        dst_fields = ["dst", "responder_ip", "destination.ip", "xlatedst"]
+
         if src_ip:
-            extra_filters.append({
-                "bool": {
-                    "should": [
-                        {"term": {"src": src_ip}},
-                        {"term": {"initiator_ip": src_ip}},
-                        {"term": {"original_initiator_ip": src_ip}},
-                        {"term": {"client_ip": src_ip}},
-                        {"term": {"source.ip": src_ip}},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            })
+            if is_cidr(src_ip):
+                extra_filters.append(cidr_to_opensearch_filter(src_ip, src_fields))
+            else:
+                extra_filters.append(
+                    {
+                        "bool": {
+                            "should": [{"term": {f: src_ip}} for f in src_fields],
+                            "minimum_should_match": 1,
+                        }
+                    }
+                )
         if dst_ip:
-            extra_filters.append({
-                "bool": {
-                    "should": [
-                        {"term": {"dst": dst_ip}},
-                        {"term": {"responder_ip": dst_ip}},
-                        {"term": {"destination.ip": dst_ip}},
-                        {"term": {"xlatedst": dst_ip}},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            })
+            if is_cidr(dst_ip):
+                extra_filters.append(cidr_to_opensearch_filter(dst_ip, dst_fields))
+            else:
+                extra_filters.append(
+                    {
+                        "bool": {
+                            "should": [{"term": {f: dst_ip}} for f in dst_fields],
+                            "minimum_should_match": 1,
+                        }
+                    }
+                )
         if dst_port is not None:
-            extra_filters.append({
-                "bool": {
-                    "should": [
-                        {"term": {"service": dst_port}},
-                        {"term": {"s_port": dst_port}},
-                        {"term": {"destination.port": dst_port}},
-                        {"term": {"__p_dport": dst_port}},
-                    ],
-                    "minimum_should_match": 1,
+            extra_filters.append(
+                {
+                    "bool": {
+                        "should": [
+                            {"term": {"service": dst_port}},
+                            {"term": {"s_port": dst_port}},
+                            {"term": {"destination.port": dst_port}},
+                            {"term": {"__p_dport": dst_port}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
                 }
-            })
+            )
 
         # --- Domain aggregation ---
         domain_body: dict[str, Any] = {
             "size": 0,
-            "query": {"bool": {"filter": [time_range, *extra_filters], "should": ip_should, "minimum_should_match": 1}},
+            "query": {
+                "bool": {
+                    "filter": [time_range, *extra_filters],
+                    "should": ip_should,
+                    "minimum_should_match": 1,
+                }
+            },
             "aggs": {
                 "activity": {
                     "composite": {
                         "size": size,
                         "sources": [
-                            {"domain": {"terms": {"script": {"lang": "painless", "source": DOMAIN_EXTRACTION_SCRIPT}}}},
-                            {"application": {"terms": {"script": {"lang": "painless", "source": APPLICATION_EXTRACTION_SCRIPT}}}},
+                            {
+                                "domain": {
+                                    "terms": {
+                                        "script": {
+                                            "lang": "painless",
+                                            "source": DOMAIN_EXTRACTION_SCRIPT,
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "application": {
+                                    "terms": {
+                                        "script": {
+                                            "lang": "painless",
+                                            "source": APPLICATION_EXTRACTION_SCRIPT,
+                                        }
+                                    }
+                                }
+                            },
                         ],
                     },
                     "aggs": {
@@ -537,7 +654,13 @@ class OpenSearchActivityService:
         # --- Top IPs aggregation ---
         ips_body: dict[str, Any] = {
             "size": 0,
-            "query": {"bool": {"filter": [time_range, *extra_filters], "should": ip_should, "minimum_should_match": 1}},
+            "query": {
+                "bool": {
+                    "filter": [time_range, *extra_filters],
+                    "should": ip_should,
+                    "minimum_should_match": 1,
+                }
+            },
             "aggs": {
                 "top_src": {"terms": {"field": "src", "size": 50}},
                 "top_dst": {"terms": {"field": "dst", "size": 50}},
@@ -549,7 +672,13 @@ class OpenSearchActivityService:
         # --- Top ports aggregation ---
         ports_body: dict[str, Any] = {
             "size": 0,
-            "query": {"bool": {"filter": [time_range, *extra_filters], "should": ip_should, "minimum_should_match": 1}},
+            "query": {
+                "bool": {
+                    "filter": [time_range, *extra_filters],
+                    "should": ip_should,
+                    "minimum_should_match": 1,
+                }
+            },
             "aggs": {
                 "top_dst_port": {"terms": {"field": "service", "size": 50}},
                 "top_src_port": {"terms": {"field": "s_port", "size": 50}},
@@ -559,7 +688,13 @@ class OpenSearchActivityService:
         # --- Protocols + Actions + Users ---
         misc_body: dict[str, Any] = {
             "size": 0,
-            "query": {"bool": {"filter": [time_range, *extra_filters], "should": ip_should, "minimum_should_match": 1}},
+            "query": {
+                "bool": {
+                    "filter": [time_range, *extra_filters],
+                    "should": ip_should,
+                    "minimum_should_match": 1,
+                }
+            },
             "aggs": {
                 "protocols": {"terms": {"field": "proto.keyword", "size": 20}},
                 "actions": {"terms": {"field": "action.keyword", "size": 30}},
@@ -576,7 +711,12 @@ class OpenSearchActivityService:
 
         all_domain_buckets: list[dict[str, Any]] = []
         seen_domain_keys: set[tuple[str, str]] = set()
-        merged_ips: dict[str, dict[str, int]] = {"src": {}, "dst": {}, "initiator": {}, "responder": {}}
+        merged_ips: dict[str, dict[str, int]] = {
+            "src": {},
+            "dst": {},
+            "initiator": {},
+            "responder": {},
+        }
         merged_ports: dict[str, int] = {}
         merged_protocols: dict[str, int] = {}
         merged_actions: dict[str, int] = {}
@@ -589,8 +729,13 @@ class OpenSearchActivityService:
                 try:
                     r = await client.post(f"/{pattern}/_search", json=domain_body)
                     if r.status_code == 200:
-                        for b in r.json().get("aggregations", {}).get("activity", {}).get("buckets", []):
-                            key = (b.get("key", {}).get("domain", ""), b.get("key", {}).get("application", ""))
+                        for b in (
+                            r.json().get("aggregations", {}).get("activity", {}).get("buckets", [])
+                        ):
+                            key = (
+                                b.get("key", {}).get("domain", ""),
+                                b.get("key", {}).get("application", ""),
+                            )
                             if key not in seen_domain_keys:
                                 seen_domain_keys.add(key)
                                 all_domain_buckets.append(b)
@@ -612,10 +757,14 @@ class OpenSearchActivityService:
                             merged_ips["dst"][k] = merged_ips["dst"].get(k, 0) + bucket["doc_count"]
                         for bucket in aggs.get("top_initiator", {}).get("buckets", []):
                             k = bucket["key"]
-                            merged_ips["initiator"][k] = merged_ips["initiator"].get(k, 0) + bucket["doc_count"]
+                            merged_ips["initiator"][k] = (
+                                merged_ips["initiator"].get(k, 0) + bucket["doc_count"]
+                            )
                         for bucket in aggs.get("top_responder", {}).get("buckets", []):
                             k = bucket["key"]
-                            merged_ips["responder"][k] = merged_ips["responder"].get(k, 0) + bucket["doc_count"]
+                            merged_ips["responder"][k] = (
+                                merged_ips["responder"].get(k, 0) + bucket["doc_count"]
+                            )
                 except Exception:
                     pass
 
@@ -655,13 +804,17 @@ class OpenSearchActivityService:
 
         # Sort everything and filter unknowns
         all_domain_buckets = [
-            b for b in all_domain_buckets
+            b
+            for b in all_domain_buckets
             if b.get("key", {}).get("domain", "") not in ("", "unknown", "-", "null")
         ]
         all_domain_buckets.sort(key=lambda b: b.get("doc_count", 0), reverse=True)
 
         def sort_dict(d: dict[str, int]) -> list[dict[str, Any]]:
-            return [{"key": k, "doc_count": v} for k, v in sorted(d.items(), key=lambda x: x[1], reverse=True)[:size]]
+            return [
+                {"key": k, "doc_count": v}
+                for k, v in sorted(d.items(), key=lambda x: x[1], reverse=True)[:size]
+            ]
 
         # ASN enrichment for all IPs
         all_ips: set[str] = set()
@@ -676,16 +829,18 @@ class OpenSearchActivityService:
             for item in items:
                 ip_addr = item["key"]
                 geo_info = asn_map.get(ip_addr, {})
-                result.append({
-                    **item,
-                    "asn": geo_info.get("asn"),
-                    "asn_org": geo_info.get("asn_org"),
-                    "vendor": geo_info.get("vendor", "Unknown"),
-                    "category": geo_info.get("category", "unknown"),
-                    "scope": geo_info.get("scope", "unknown"),
-                    "country": geo_info.get("country"),
-                    "country_name": geo_info.get("country_name"),
-                })
+                result.append(
+                    {
+                        **item,
+                        "asn": geo_info.get("asn"),
+                        "asn_org": geo_info.get("asn_org"),
+                        "vendor": geo_info.get("vendor", "Unknown"),
+                        "category": geo_info.get("category", "unknown"),
+                        "scope": geo_info.get("scope", "unknown"),
+                        "country": geo_info.get("country"),
+                        "country_name": geo_info.get("country_name"),
+                    }
+                )
             return result
 
         # Resolve protocol names
@@ -724,6 +879,7 @@ class OpenSearchActivityService:
         """Enrich a list of IPs with ASN + Country data from GeoLite2."""
         try:
             from app.integrations.geoip.asn_enricher import enrich_ips
+
             results = enrich_ips(ips)
             return {r["ip"]: r for r in results}
         except Exception:
@@ -735,8 +891,14 @@ class OpenSearchActivityService:
         if not proto:
             return "—"
         proto_map = {
-            "1": "ICMP", "6": "TCP", "17": "UDP", "47": "GRE",
-            "50": "ESP", "51": "AH", "58": "ICMPv6", "89": "OSPF",
+            "1": "ICMP",
+            "6": "TCP",
+            "17": "UDP",
+            "47": "GRE",
+            "50": "ESP",
+            "51": "AH",
+            "58": "ICMPv6",
+            "89": "OSPF",
             "132": "SCTP",
         }
         p = str(proto).strip()
@@ -800,10 +962,10 @@ class OpenSearchActivityService:
         return events
 
     def _build_summary_from_events(
-            self,
-            ip: str,
-            events: list[UnifiedActivityEvent],
-            window: str,
+        self,
+        ip: str,
+        events: list[UnifiedActivityEvent],
+        window: str,
     ) -> ActivitySummary:
         internal_counter: dict[tuple[str, int | None], int] = {}
         external_counter: dict[tuple[str, int | None], int] = {}

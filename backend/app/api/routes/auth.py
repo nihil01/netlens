@@ -39,7 +39,8 @@ async def login(
         "response_type": "code",
         "scope": "openid profile email",
     }
-    auth_url = f"{str(settings.keycloak_issuer_url).rstrip('/')}/protocol/openid-connect/auth?{urlencode(params)}"
+    issuer = str(settings.keycloak_issuer_url).rstrip("/")
+    auth_url = f"{issuer}/protocol/openid-connect/auth?{urlencode(params)}"
     return RedirectResponse(url=auth_url)
 
 
@@ -58,6 +59,7 @@ async def logout(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
     if settings.keycloak_issuer_url:
-        logout_url = f"{str(settings.keycloak_issuer_url).rstrip('/')}/protocol/openid-connect/logout"
+        issuer = str(settings.keycloak_issuer_url).rstrip("/")
+        logout_url = f"{issuer}/protocol/openid-connect/logout"
         return {"logout_url": logout_url}
     return {"message": "Logout not configured"}

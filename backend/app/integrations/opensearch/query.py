@@ -3,11 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 from app.integrations.opensearch.mappings import OpenSearchSourceMapping
+from app.utils.cidr import cidr_to_opensearch_filter, is_cidr
 
 
 def field_terms(fields: list[str], value: str | int) -> list[dict[str, Any]]:
     """Return a list of ``term`` clauses, one per field."""
     return [{"term": {field: value}} for field in fields]
+
+
+def ip_filter(value: str, fields: list[str]) -> dict[str, Any]:
+    """Build an IP filter clause, supporting both plain IPs and CIDR notation."""
+    if is_cidr(value):
+        return cidr_to_opensearch_filter(value, fields)
+    return {
+        "bool": {
+            "should": field_terms(fields, value),
+            "minimum_should_match": 1,
+        }
+    }
 
 
 def build_time_range(
@@ -58,33 +71,24 @@ def build_ip_logs_query(
 
     directional_filters: list[dict[str, Any]] = []
     ip_should = [
-        {"term": {field: ip}}
-        for field in mapping.source_ip_fields + mapping.destination_ip_fields
+        {"term": {field: ip}} for field in mapping.source_ip_fields + mapping.destination_ip_fields
     ]
 
     if src_ip:
-        directional_filters.append({
-            "bool": {
-                "should": field_terms(mapping.source_ip_fields, src_ip),
-                "minimum_should_match": 1,
-            }
-        })
+        directional_filters.append(ip_filter(src_ip, mapping.source_ip_fields))
 
     if dst_ip:
-        directional_filters.append({
-            "bool": {
-                "should": field_terms(mapping.destination_ip_fields, dst_ip),
-                "minimum_should_match": 1,
-            }
-        })
+        directional_filters.append(ip_filter(dst_ip, mapping.destination_ip_fields))
 
     if dst_port is not None:
-        directional_filters.append({
-            "bool": {
-                "should": field_terms(mapping.destination_port_fields, dst_port),
-                "minimum_should_match": 1,
+        directional_filters.append(
+            {
+                "bool": {
+                    "should": field_terms(mapping.destination_port_fields, dst_port),
+                    "minimum_should_match": 1,
+                }
             }
-        })
+        )
 
     source_includes = sorted(
         {
@@ -118,7 +122,11 @@ def build_ip_logs_query(
                     time_range,
                     *directional_filters,
                 ],
-                **({"should": ip_should, "minimum_should_match": 1} if not directional_filters else {}),
+                **(
+                    {"should": ip_should, "minimum_should_match": 1}
+                    if not directional_filters
+                    else {}
+                ),
             }
         },
         "sort": [

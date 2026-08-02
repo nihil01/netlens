@@ -25,7 +25,9 @@ import geoip2.errors
 
 logger = logging.getLogger(__name__)
 
-_DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "geoip_data"))
+_DATA_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "geoip_data")
+)
 _ASN_DB = os.path.join(_DATA_DIR, "GeoLite2-ASN.mmdb")
 _COUNTRY_DB = os.path.join(_DATA_DIR, "GeoLite2-Country.mmdb")
 

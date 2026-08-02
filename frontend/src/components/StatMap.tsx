@@ -1,5 +1,3 @@
-import { cn, ui } from '../lib/ui';
-
 export function StatMap({ stats, title }: { stats: Record<string, number>; title: string }) {
   const entries = Object.entries(stats ?? {}).sort(([, a], [, b]) => b - a);
   if (!entries.length) return null;

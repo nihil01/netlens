@@ -1,5 +1,5 @@
 import type { UnifiedActivityEvent } from '../api';
-import { cn, ui } from '../lib/ui';
+import { cn } from '../lib/ui';
 
 function EventField({ label, mono = false, value }: { label: string; mono?: boolean; value: string }) {
   return (

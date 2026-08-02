@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 BAKU_TZ = timezone(timedelta(hours=4))
 
@@ -21,7 +21,7 @@ def to_baku(dt: datetime | str | None) -> str:
 
     # If naive, assume UTC
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
 
     baku_dt = dt.astimezone(BAKU_TZ)
     return baku_dt.strftime("%Y-%m-%d %H:%M:%S")

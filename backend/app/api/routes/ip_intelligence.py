@@ -25,7 +25,10 @@ async def get_ip_summary(
     service: Annotated[IpIntelligenceService, Depends(get_ip_service)],
     src_ip: Annotated[str | None, Query(description="Source IP filter for OpenSearch")] = None,
     dst_ip: Annotated[str | None, Query(description="Destination IP filter for OpenSearch")] = None,
-    dst_port: Annotated[int | None, Query(ge=1, le=65535, description="Destination port filter for OpenSearch")] = None,
+    dst_port: Annotated[
+        int | None,
+        Query(ge=1, le=65535, description="Destination port filter for OpenSearch"),
+    ] = None,
 ) -> IpSummary:
     if not validate_ip_address(ip):
         raise HTTPException(status_code=422, detail="Invalid IP address")

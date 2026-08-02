@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IntegrationStatus(BaseModel):
@@ -122,6 +123,37 @@ class ScanContext(BaseModel):
     open_ports: list[int] = Field(default_factory=list)
     os_guess: str | None = None
     accuracy: int | None = None
+
+
+class ScannerFingerprinting(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    ip: str | None = None
+    os_guess: str | None = None
+    accuracy: int | None = None
+    success: bool = False
+
+
+class ScannerProfile(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    ip: str
+    status: str = "unknown"
+    ports: list[int] = Field(default_factory=list)
+    category: str = "unknown"
+    site_id: int | None = None
+    is_new: bool = False
+    hostname: str | None = None
+    fingerprinting: ScannerFingerprinting | None = None
+
+
+class ScannerProfilesResponse(BaseModel):
+    status: Literal["ready", "unavailable"]
+    trigger: str | None = None
+    started_at: datetime | None = None
+    updated_at: datetime | None = None
+    hosts_total: int = 0
+    profiles: list[ScannerProfile] = Field(default_factory=list)
 
 
 class ActivityCounterparty(BaseModel):

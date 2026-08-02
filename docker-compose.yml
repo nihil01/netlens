@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # --- PostgreSQL ---
   postgres:
@@ -17,6 +15,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   # --- Redis ---
   redis:
@@ -31,6 +31,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # --- Database migrations ---
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "apply_migrations.py"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netlens}:${POSTGRES_PASSWORD:-netlens}@postgres:5432/${POSTGRES_DB:-netlens}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   # --- Backend ---
   backend:
@@ -40,19 +55,23 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_REQUESTS_PER_MINUTE: ${RATE_LIMIT_REQUESTS_PER_MINUTE:-600}
+      RATE_LIMIT_SENSITIVE_REQUESTS_PER_MINUTE: ${RATE_LIMIT_SENSITIVE_REQUESTS_PER_MINUTE:-20}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netlens}:${POSTGRES_PASSWORD:-netlens}@postgres:5432/${POSTGRES_DB:-netlens}
+      DATABASE_AUTO_CREATE_SCHEMA: ${DATABASE_AUTO_CREATE_SCHEMA:-false}
       REDIS_URL: redis://:${REDIS_PASSWORD:-netlens}@redis:6380/0
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80","http://10.22.10.185:9091","http://10.22.10.185"]}
-      AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://net-mgmt.taxes.gov.az:8080/realms/dvx}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80"]}
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080/realms/netlens}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-netlens}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-netlens}
-      NETBOX_TOKEN: ${NETBOX_TOKEN:-4e5dd1cf728f732fa4b2d4f0b2cf11e2aef343f4}
-      NETBOX_URL: ${NETBOX_URL:-https://net-mgmt.taxes.gov.az:5050}
+      NETBOX_TOKEN: ${NETBOX_TOKEN:-}
+      NETBOX_URL: ${NETBOX_URL:-}
       NETBOX_VERIFY_SSL: ${NETBOX_VERIFY_SSL:-false}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-https://10.22.10.186:9200}
-      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-admin}
-      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-Orxan20052004!}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-false}
       OPENSEARCH_CISCO_ASA_INDEX_PATTERN: ${OPENSEARCH_CISCO_ASA_INDEX_PATTERN:-asa-*}  
       OPENSEARCH_FIREPOWER_INDEX_PATTERN: ${OPENSEARCH_FIREPOWER_INDEX_PATTERN:-firepower-*}
@@ -60,8 +79,47 @@ services:
       OPENSEARCH_CISCO_USER_ACTIVITY_INDEX_PATTERN: ${OPENSEARCH_CISCO_USER_ACTIVITY_INDEX_PATTERN:-fmc-useractivity-*}
       OPENSEARCH_CHECKPOINT_INDEX_PATTERN: ${OPENSEARCH_CHECKPOINT_INDEX_PATTERN:-checkpoint-*}
       INTERNAL_CIDRS: ${INTERNAL_CIDRS:-["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}
+      NETBOX_DEVICE_CACHE_TTL_SECONDS: ${NETBOX_DEVICE_CACHE_TTL_SECONDS:-3600}
+      INVENTORY_REFRESH_ENABLED: ${INVENTORY_REFRESH_ENABLED:-true}
+      INVENTORY_REFRESH_CRON: ${INVENTORY_REFRESH_CRON:-*/30 * * * *}
       SCANNER_SCHEDULE_ENABLED: ${SCANNER_SCHEDULE_ENABLED:-true}
       SCANNER_SCHEDULE_CRON: ${SCANNER_SCHEDULE_CRON:-0 2 * * *}
+      SCANNER_DATASET_PATH: ${SCANNER_DATASET_PATH:-app/scanner/net_dataset.json}
+      SCANNER_DEFAULT_SCOPE: ${SCANNER_DEFAULT_SCOPE:-netbox-management}
+      SCANNER_PROFILE: ${SCANNER_PROFILE:-safe}
+      SCANNER_CREDENTIALS: ${SCANNER_CREDENTIALS:-[]}
+      FMC_URL: ${FMC_URL:-}
+      FMC_USERNAME: ${FMC_USERNAME:-}
+      FMC_PASSWORD: ${FMC_PASSWORD:-}
+      FMC_VERIFY_SSL: ${FMC_VERIFY_SSL:-true}
+      FMC_TIMEOUT_SECONDS: ${FMC_TIMEOUT_SECONDS:-30}
+      FMC_MAX_ATTEMPTS: ${FMC_MAX_ATTEMPTS:-5}
+      FMC_MIN_REQUEST_INTERVAL_SECONDS: ${FMC_MIN_REQUEST_INTERVAL_SECONDS:-1.0}
+      FMC_RATE_LIMIT_COOLDOWN_SECONDS: ${FMC_RATE_LIMIT_COOLDOWN_SECONDS:-10.0}
+      FMC_RAW_RESPONSE_LIMIT: ${FMC_RAW_RESPONSE_LIMIT:-500}
+      FMC_RAW_RESPONSE_MAX_BYTES: ${FMC_RAW_RESPONSE_MAX_BYTES:-262144}
+      FMC_RAW_RESPONSE_RETENTION_DAYS: ${FMC_RAW_RESPONSE_RETENTION_DAYS:-14}
+      FMC_DEVICE_HEALTH_STALE_SECONDS: ${FMC_DEVICE_HEALTH_STALE_SECONDS:-900}
+      FMC_FULL_SCAN_ENABLED: ${FMC_FULL_SCAN_ENABLED:-false}
+      FMC_DISCOVERY_REFRESH_MINUTES: ${FMC_DISCOVERY_REFRESH_MINUTES:-30}
+      FMC_DEVICE_HEALTH_REFRESH_SECONDS: ${FMC_DEVICE_HEALTH_REFRESH_SECONDS:-300}
+      FMC_HEALTH_HISTORY_LOOKBACK_SECONDS: ${FMC_HEALTH_HISTORY_LOOKBACK_SECONDS:-3600}
+      FMC_HEALTH_HISTORY_STEP_SECONDS: ${FMC_HEALTH_HISTORY_STEP_SECONDS:-60}
+      FMC_INTERFACE_REFRESH_MINUTES: ${FMC_INTERFACE_REFRESH_MINUTES:-60}
+      FMC_HA_REFRESH_SECONDS: ${FMC_HA_REFRESH_SECONDS:-300}
+      FMC_ALERT_REFRESH_SECONDS: ${FMC_ALERT_REFRESH_SECONDS:-600}
+      FMC_POLICY_ANALYSIS_REFRESH_HOURS: ${FMC_POLICY_ANALYSIS_REFRESH_HOURS:-24}
+      FMC_VPN_REFRESH_MINUTES: ${FMC_VPN_REFRESH_MINUTES:-5}
+      FMC_VPN_FLAP_TRANSITION_THRESHOLD: ${FMC_VPN_FLAP_TRANSITION_THRESHOLD:-3}
+      FMC_VPN_FLAP_WINDOW_SECONDS: ${FMC_VPN_FLAP_WINDOW_SECONDS:-900}
+      FMC_AUDIT_INTERVAL_MINUTES: ${FMC_AUDIT_INTERVAL_MINUTES:-5}
+      FMC_ALERT_FLAP_REOPEN_THRESHOLD: ${FMC_ALERT_FLAP_REOPEN_THRESHOLD:-3}
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+      RETENTION_CRON: ${RETENTION_CRON:-17 4 * * *}
+      METRIC_RETENTION_DAYS: ${METRIC_RETENTION_DAYS:-90}
+      VPN_TRANSITION_RETENTION_DAYS: ${VPN_TRANSITION_RETENTION_DAYS:-1095}
+      HEALTH_ALERT_RETENTION_DAYS: ${HEALTH_ALERT_RETENTION_DAYS:-1095}
+      COLLECTOR_RUN_RETENTION_DAYS: ${COLLECTOR_RUN_RETENTION_DAYS:-30}
     ports:
       - "${BACKEND_PORT:-9090}:8000"
     depends_on:
@@ -69,6 +127,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
 
   # --- Frontend ---
   frontend:
@@ -76,15 +143,23 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://10.22.10.185:9090/api}
-        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://net-mgmt.taxes.gov.az:8080}
-        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-dvx}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-}
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-netlens}
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-netlens}
-        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-true}
+        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-false}
     ports:
       - "${FRONTEND_PORT:-9091}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
 
 volumes:
   postgres_data:

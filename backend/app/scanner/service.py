@@ -5,13 +5,19 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.scanner.pipeline import AdvancedProfilingEngine, PipelineOrchestrator
+from app.scanner.store import ScannerProfileStore
 
 logger = logging.getLogger(__name__)
 
 
 class ScannerService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        profile_store: ScannerProfileStore | None = None,
+    ) -> None:
         self.settings = settings
+        self.profile_store = profile_store or ScannerProfileStore()
         self._scan_lock = asyncio.Lock()
         self._current_task: asyncio.Task | None = None
 
@@ -46,6 +52,12 @@ class ScannerService:
                 profiles = await orchestrator.run_pipeline()
 
                 finished_at = datetime.now(UTC)
+                await self.profile_store.save(
+                    profiles,
+                    trigger=trigger,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                )
 
                 return {
                     "status": "completed",
@@ -77,9 +89,7 @@ class ScannerService:
                 "trigger": trigger,
             }
 
-        self._current_task = asyncio.create_task(
-            self.run_scheduled_scan(trigger=trigger)
-        )
+        self._current_task = asyncio.create_task(self.run_scheduled_scan(trigger=trigger))
 
         return {
             "status": "accepted",

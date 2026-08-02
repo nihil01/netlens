@@ -92,7 +92,6 @@ class NmapProfiler:
         return result
 
 
-
 class AdvancedProfilingEngine:
     def __init__(
         self,
@@ -125,11 +124,16 @@ class AdvancedProfilingEngine:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _load_networks(self) -> list[dict[str, Any]]:
-        try:
-            with open(self.dataset_path, encoding="utf-8") as file:
-                return json.load(file)
-        except Exception:
-            return []
+        dataset_path = Path(self.dataset_path)
+        if not dataset_path.is_absolute() and not dataset_path.exists():
+            dataset_path = Path(__file__).resolve().parents[2] / dataset_path
+
+        with dataset_path.open(encoding="utf-8") as file:
+            networks = json.load(file)
+
+        if not isinstance(networks, list):
+            raise ValueError(f"Scanner dataset must contain a JSON list: {dataset_path}")
+        return networks
 
     async def build_netbox_cache(self) -> None:
 
@@ -257,16 +261,8 @@ class AdvancedProfilingEngine:
 
     async def fetch_device_data(self, ip: str) -> dict[str, Any]:
         for cred in self.credentials:
-
             for transport_type in ["asyncssh", "asynctelnet"]:
-
-                print(
-                    f"[SSH] "
-                    f"{ip} "
-                    f"cred={cred['login']} "
-                    f"transport={transport_type}"
-                )
-
+                print(f"[SSH] {ip} cred={cred['login']} transport={transport_type}")
 
                 try:
                     async with AsyncIOSXEDriver(
@@ -279,7 +275,6 @@ class AdvancedProfilingEngine:
                         timeout_socket=5,
                         timeout_transport=5,
                     ) as conn:
-
                         version_result = await conn.send_command("show version")
                         interfaces_result = await conn.send_command("show interfaces")
                         arp_result = await conn.send_command("show ip arp")
@@ -295,9 +290,7 @@ class AdvancedProfilingEngine:
                             parsed_mac = mac_result.result
 
                         v_data = (
-                            parsed_ver[0]
-                            if isinstance(parsed_ver, list) and parsed_ver
-                            else {}
+                            parsed_ver[0] if isinstance(parsed_ver, list) and parsed_ver else {}
                         )
 
                         hostname = v_data.get("hostname", ip)
@@ -346,21 +339,13 @@ class AdvancedProfilingEngine:
                             "mac_table": parsed_mac if isinstance(parsed_mac, list) else [],
                         }
 
-
                 except Exception as exc:
-
                     print(
-
                         f"[SSH] FAILED "
-
                         f"{ip} "
-
                         f"cred={cred['login']} "
-
                         f"transport={transport_type} "
-
                         f"error={type(exc).__name__}: {exc}"
-
                     )
 
                     await asyncio.sleep(0.5)
@@ -376,11 +361,11 @@ class PipelineOrchestrator:
         self.local_snapshot: dict[str, Any] = {}
 
     def _get_or_create_mac_on_interface(
-            self,
-            nb,
-            mac_address: str,
-            interface_id: int,
-            description: str,
+        self,
+        nb,
+        mac_address: str,
+        interface_id: int,
+        description: str,
     ):
         existing_macs = list(nb.dcim.mac_addresses.filter(mac_address=mac_address))
 
@@ -422,7 +407,7 @@ class PipelineOrchestrator:
         if len(clean) != 12:
             return None
 
-        return ":".join(clean[i: i + 2] for i in range(0, 12, 2))
+        return ":".join(clean[i : i + 2] for i in range(0, 12, 2))
 
     def _normalize_interface_name(self, name: str | None) -> str | None:
         if not name:
@@ -449,8 +434,8 @@ class PipelineOrchestrator:
         return value
 
     def _extract_learned_macs_by_interface(
-            self,
-            mac_table: Any,
+        self,
+        mac_table: Any,
     ) -> dict[str, list[dict[str, Any]]]:
         result: dict[str, list[dict[str, Any]]] = {}
 
@@ -470,17 +455,17 @@ class PipelineOrchestrator:
                 continue
 
             raw_mac = (
-                    row.get("destination_address")
-                    or row.get("mac_address")
-                    or row.get("mac")
-                    or row.get("address")
+                row.get("destination_address")
+                or row.get("mac_address")
+                or row.get("mac")
+                or row.get("address")
             )
 
             raw_interface = (
-                    row.get("destination_port")
-                    or row.get("port")
-                    or row.get("ports")
-                    or row.get("interface")
+                row.get("destination_port")
+                or row.get("port")
+                or row.get("ports")
+                or row.get("interface")
             )
 
             if isinstance(raw_interface, list):
@@ -505,7 +490,6 @@ class PipelineOrchestrator:
             )
 
         return result
-
 
     def _extract_arp_ip_mac(
         self,
@@ -556,17 +540,11 @@ class PipelineOrchestrator:
 
         await self.engine.build_netbox_cache()
 
-        print(
-            f"[PIPELINE] netbox cache size="
-            f"{len(self.engine.netbox_ip_cache)}"
-        )
+        print(f"[PIPELINE] netbox cache size={len(self.engine.netbox_ip_cache)}")
 
         discovery_results = await self.phase1_discovery()
 
-        print(
-            f"[PIPELINE] discovery results="
-            f"{len(discovery_results)}"
-        )
+        print(f"[PIPELINE] discovery results={len(discovery_results)}")
 
         enriched_data = await self.phase2_enrichment()
         self._refresh_arp_cache(enriched_data)
@@ -586,11 +564,6 @@ class PipelineOrchestrator:
             json.dump(self.local_snapshot, file, ensure_ascii=False, indent=4)
 
         final_profiles = await self.phase4_fingerprinting(discovery_results)
-
-        profiles_filename = self.engine.output_dir / "profiles.json"
-
-        with open(profiles_filename, "w", encoding="utf-8") as file:
-            json.dump(final_profiles, file, ensure_ascii=False, indent=4)
 
         return final_profiles
 
@@ -631,10 +604,7 @@ class PipelineOrchestrator:
         if not all_ips_to_ping:
             return []
 
-        print(
-            f"[DISCOVERY] total ips to ping="
-            f"{len(all_ips_to_ping)}"
-        )
+        print(f"[DISCOVERY] total ips to ping={len(all_ips_to_ping)}")
 
         try:
             hosts = await async_multiping(
@@ -647,20 +617,14 @@ class PipelineOrchestrator:
 
             alive_ips = [host.address for host in hosts if host.is_alive]
 
-            print(
-                f"[DISCOVERY] alive hosts="
-                f"{len(alive_ips)}"
-            )
+            print(f"[DISCOVERY] alive hosts={len(alive_ips)}")
 
             print(alive_ips[:20])
 
-        except Exception:
-            return []
+        except Exception as exc:
+            raise RuntimeError("Network discovery failed") from exc
 
-        port_tasks = [
-            self.engine.check_ports_only(ip, ip_metadata[ip])
-            for ip in alive_ips
-        ]
+        port_tasks = [self.engine.check_ports_only(ip, ip_metadata[ip]) for ip in alive_ips]
 
         discovery_results = await asyncio.gather(*port_tasks)
 
@@ -691,10 +655,7 @@ class PipelineOrchestrator:
             if not getattr(dev, "primary_ip4", None):
                 return
 
-            print(
-                f"[ENRICHMENT] trying device "
-                f"{dev.name} "
-            )
+            print(f"[ENRICHMENT] trying device {dev.name} ")
 
             ip_str = str(dev.primary_ip4.address).split("/")[0]
 
@@ -706,10 +667,7 @@ class PipelineOrchestrator:
                     )
 
                     enrichment_results[ip_str] = real_data
-                    print(
-                        f"[ENRICHMENT] SUCCESS "
-                        f"{ip_str}"
-                    )
+                    print(f"[ENRICHMENT] SUCCESS {ip_str}")
 
                     print(real_data["device_info"])
 
@@ -721,13 +679,9 @@ class PipelineOrchestrator:
         print("=" * 80)
         print("[ENRICHMENT] START")
 
-        print(
-            f"[ENRICHMENT] netbox devices="
-            f"{len(devices)}"
-        )
+        print(f"[ENRICHMENT] netbox devices={len(devices)}")
 
         return enrichment_results
-
 
     def _delete_mac_address(self, mac_obj: Any) -> None:
         try:
@@ -784,21 +738,13 @@ class PipelineOrchestrator:
             print(f"[NETBOX SYNC] device={hostname}")
             print(f"[NETBOX SYNC] ip={ip}")
 
-            print(
-                f"[NETBOX SYNC] interfaces="
-                f"{len(interfaces_data)}"
-            )
+            print(f"[NETBOX SYNC] interfaces={len(interfaces_data)}")
 
-            print(
-                f"[NETBOX SYNC] mac_table="
-                f"{len(mac_table)}"
-            )
+            print(f"[NETBOX SYNC] mac_table={len(mac_table)}")
 
             learned_macs_by_interface = self._extract_learned_macs_by_interface(mac_table)
 
-            print(
-                "[NETBOX SYNC] learned_macs_by_interface="
-            )
+            print("[NETBOX SYNC] learned_macs_by_interface=")
 
             for k, v in learned_macs_by_interface.items():
                 print(f"    {k}: {len(v)} MACs")
@@ -826,10 +772,7 @@ class PipelineOrchestrator:
             if version and version != "Unknown":
                 platform_name = f"IOS-{version}"
                 platform_slug = (
-                    platform_name.lower()
-                    .replace(".", "-")
-                    .replace("(", "-")
-                    .replace(")", "-")
+                    platform_name.lower().replace(".", "-").replace("(", "-").replace(")", "-")
                 )
 
                 try:
@@ -879,8 +822,7 @@ class PipelineOrchestrator:
             self._clear_device_mac_addresses(nb, device.id)
 
             existing_interfaces = {
-                intf.name: intf
-                for intf in nb.dcim.interfaces.filter(device_id=device.id)
+                intf.name: intf for intf in nb.dcim.interfaces.filter(device_id=device.id)
             }
 
             for intf_name, intf_details in interfaces_data.items():
@@ -892,10 +834,7 @@ class PipelineOrchestrator:
 
                 if mac_raw and len(mac_raw) == 14 and "." in mac_raw:
                     clean_mac = mac_raw.replace(".", "").upper()
-                    formatted_mac = ":".join(
-                        clean_mac[i : i + 2]
-                        for i in range(0, 12, 2)
-                    )
+                    formatted_mac = ":".join(clean_mac[i : i + 2] for i in range(0, 12, 2))
 
                 intf_type = "other"
 
@@ -997,8 +936,7 @@ class PipelineOrchestrator:
                     )
 
         tasks = [
-            asyncio.to_thread(_sync_single_device, ip, data)
-            for ip, data in enriched_data.items()
+            asyncio.to_thread(_sync_single_device, ip, data) for ip, data in enriched_data.items()
         ]
 
         if tasks:

@@ -120,6 +120,12 @@ class NetBoxService:
         if cached:
             return NetBoxInventory.model_validate(cached)
 
+        return await self.refresh_inventory()
+
+    async def refresh_inventory(self) -> NetBoxInventory:
+        """Fetch a fresh inventory and replace the cache only after a successful load."""
+        cache_key = "netbox:inventory"
+
         if not self._is_configured():
             return NetBoxInventory(
                 status=IntegrationStatus(
@@ -146,6 +152,13 @@ class NetBoxService:
                 )
             )
 
+    async def clear_cache(self) -> int:
+        """Remove inventory and per-device NetBox cache entries only."""
+        try:
+            return await self.cache.delete_prefix("netbox:")
+        except Exception:
+            return 0
+
     async def lookup_ip(self, ip: str) -> NetBoxContext:
         if not self._is_configured():
             return NetBoxContext(
@@ -171,8 +184,6 @@ class NetBoxService:
         if cached:
             cached["cache"] = {**cached.get("cache", {}), "hit": True, "key": cache_key}
             return NetBoxDeviceDetail.model_validate(cached)
-
-
 
         if not self._is_configured():
             return NetBoxDeviceDetail(
@@ -499,7 +510,8 @@ class NetBoxService:
 
     async def _cache_get(self, key: str) -> dict[str, Any] | None:
         try:
-            return await self.cache.get_json(key)
+            cached = await self.cache.get_json(key)
+            return cached if isinstance(cached, dict) else None
         except Exception:
             return None
 

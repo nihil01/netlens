@@ -1,5 +1,4 @@
 import type { ActivityCounterparty } from '../api';
-import { cn, ui } from '../lib/ui';
 
 export function CounterpartyList({ items, title }: { items: ActivityCounterparty[]; title: string }) {
   if (!items.length) return null;

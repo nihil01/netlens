@@ -3,8 +3,8 @@
  * PKCE flow for SPA authentication.
  */
 
-const KEYCLOAK_URL = 'http://net-mgmt.taxes.gov.az:8080';
-const KEYCLOAK_REALM = 'dvx';
+const KEYCLOAK_URL = (import.meta.env.VITE_KEYCLOAK_URL || '').replace(/\/$/, '');
+const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'netlens';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'netlens';
 const REDIRECT_URI = window.location.origin;
 
@@ -64,11 +64,18 @@ export function getToken(): string | null {
   return currentToken;
 }
 
-export function getUser(): any {
+export type AuthenticatedUser = {
+  sub?: string;
+  preferred_username?: string;
+  email?: string;
+  realm_access?: { roles?: string[] };
+};
+
+export function getUser(): AuthenticatedUser | null {
   const token = getToken();
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const payload = JSON.parse(atob(token.split('.')[1])) as AuthenticatedUser;
     return {
       sub: payload.sub,
       preferred_username: payload.preferred_username || payload.email,
@@ -85,10 +92,12 @@ export function hasRole(role: string): boolean {
   return user?.realm_access?.roles?.includes(role) ?? false;
 }
 
-export function login(): void {
-  if (authProcessing) return;
+export async function login(): Promise<void> {
+    if (authProcessing) return;
+    if (!KEYCLOAK_URL) throw new Error('VITE_KEYCLOAK_URL is not configured');
 
   const verifier = generateCodeVerifier();
+  const challenge = await generateCodeChallenge(verifier);
   sessionStorage.setItem('pkce_verifier', verifier);
 
   const params = new URLSearchParams({
@@ -96,8 +105,8 @@ export function login(): void {
     redirect_uri: REDIRECT_URI,
     response_type: 'code',
     scope: 'openid profile email',
-    code_challenge: verifier, // Use plain method for HTTP
-    code_challenge_method: 'plain',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
   });
 
   console.log('Redirecting to Keycloak...');

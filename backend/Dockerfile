@@ -9,6 +9,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
+    nmap \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
@@ -17,6 +18,8 @@ COPY pyproject.toml ./
 RUN uv pip install --system .
 
 COPY app ./app
+COPY migrations ./migrations
+COPY apply_migrations.py ./apply_migrations.py
 COPY geoip_data ./geoip_data
 COPY logo.png ./logo.png
 

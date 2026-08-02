@@ -5,7 +5,7 @@ import type {
   NetBoxSite,
 } from './api';
 
-export type MainTab = 'inventory' | 'graph' | 'ip' | 'mac';
+export type MainTab = 'inventory' | 'graph' | 'scanner' | 'ip' | 'mac' | 'monitoring' | 'audit';
 export type GraphNodeType = 'region' | 'site' | 'device' | 'interface';
 export type GraphLifecycle = 'stable' | 'expanding' | 'collapsing';
 export type QuickFilter = 'all' | 'active' | 'offline' | 'unknownVendor' | 'interfaceProblems' | 'missingPrimaryIp';

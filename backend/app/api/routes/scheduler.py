@@ -71,3 +71,21 @@ async def scheduler_set_enabled(
 ) -> dict[str, Any]:
     scheduler = _get_scheduler(request)
     return scheduler.set_enabled(body.enabled)
+
+
+@router.get("/scheduler/inventory/status")
+async def inventory_status(
+    _: Annotated[dict, Depends(get_current_user)],
+    request: Request,
+) -> dict[str, Any]:
+    scheduler = _get_scheduler(request)
+    return scheduler.get_inventory_status()
+
+
+@router.post("/scheduler/inventory/refresh")
+async def inventory_refresh(
+    _: Annotated[dict, Depends(get_current_user)],
+    request: Request,
+) -> dict[str, Any]:
+    scheduler = _get_scheduler(request)
+    return scheduler.trigger_inventory_refresh()
