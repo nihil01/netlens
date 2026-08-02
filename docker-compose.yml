@@ -1,4 +1,54 @@
 services:
+  # --- Keycloak database ---
+  keycloak-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB:-keycloak}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB:-keycloak}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # --- Identity provider ---
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command: ["${KEYCLOAK_START_COMMAND:-start-dev}", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-change-me}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      NETLENS_FRONTEND_URL: ${NETLENS_FRONTEND_URL:-http://localhost:9091}
+      NETLENS_INITIAL_ADMIN_USERNAME: ${NETLENS_INITIAL_ADMIN_USERNAME:-netlens-admin}
+      NETLENS_INITIAL_ADMIN_PASSWORD: ${NETLENS_INITIAL_ADMIN_PASSWORD:-change-me}
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    volumes:
+      - ./keycloak/netlens-realm.json:/opt/keycloak/data/import/netlens-realm.json:ro
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+
   # --- PostgreSQL ---
   postgres:
     image: postgres:16-alpine
@@ -62,8 +112,9 @@ services:
       DATABASE_AUTO_CREATE_SCHEMA: ${DATABASE_AUTO_CREATE_SCHEMA:-false}
       REDIS_URL: redis://:${REDIS_PASSWORD:-netlens}@redis:6380/0
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80"]}
-      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080/realms/netlens}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/netlens}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-netlens}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-netlens}
       NETBOX_TOKEN: ${NETBOX_TOKEN:-}
@@ -129,6 +180,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 15s
@@ -144,10 +197,10 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
-        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8080}
         VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-netlens}
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-netlens}
-        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-false}
+        VITE_AUTH_ENABLED: ${VITE_AUTH_ENABLED:-true}
     ports:
       - "${FRONTEND_PORT:-9091}:80"
     depends_on:
@@ -162,5 +215,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  keycloak_postgres_data:
   postgres_data:
   redis_data:

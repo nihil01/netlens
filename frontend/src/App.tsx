@@ -31,6 +31,7 @@ export function App() {
   const queryClient = useQueryClient();
   const [authReady, setAuthReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<MainTab>('inventory');
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [selectedRegionName, setSelectedRegionName] = useState<string | null>(null);
@@ -105,6 +106,15 @@ export function App() {
     setActiveTab('inventory');
   }
 
+  async function handleLogin() {
+    setAuthError(null);
+    try {
+      await login();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Keycloak girişini başlatmaq mümkün olmadı.');
+    }
+  }
+
   if (!authReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -127,11 +137,16 @@ export function App() {
           <button
             type="button"
             className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            onClick={() => void login()}
+            onClick={() => void handleLogin()}
           >
             <LogIn size={16} />
             Daxil ol
           </button>
+          {authError && (
+            <p className="mt-4 max-w-sm rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {authError}
+            </p>
+          )}
         </div>
       </div>
     );

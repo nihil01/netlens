@@ -119,6 +119,11 @@ export function hasRole(role: string): boolean {
 export async function login(): Promise<void> {
   if (authProcessing) return;
   if (!KEYCLOAK_URL) throw new Error('VITE_KEYCLOAK_URL is not configured');
+  if (!window.isSecureContext || !window.crypto?.subtle) {
+    throw new Error(
+      'Keycloak girişi PKCE S256 üçün HTTPS tələb edir. Tətbiqi HTTPS ünvanı ilə açın.',
+    );
+  }
 
   const verifier = generateCodeVerifier();
   const state = generateCodeVerifier();
