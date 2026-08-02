@@ -16,23 +16,46 @@ interface TokenResponse {
 }
 
 let currentToken: string | null = localStorage.getItem('auth_token');
+let currentRefreshToken: string | null = sessionStorage.getItem('auth_refresh_token');
 let tokenExpiry: number = parseInt(localStorage.getItem('auth_token_expiry') || '0', 10);
 let authProcessing = false;
 let initDone = false;
+let refreshPromise: Promise<boolean> | null = null;
+let refreshTimer: number | undefined;
 
-function saveToken(token: string, expiresIn: number) {
-  currentToken = token;
-  tokenExpiry = Date.now() + (expiresIn * 1000) - 60000;
-  localStorage.setItem('auth_token', token);
+function saveToken(response: TokenResponse) {
+  currentToken = response.access_token;
+  tokenExpiry = Date.now() + (response.expires_in * 1000);
+  if (response.refresh_token) {
+    currentRefreshToken = response.refresh_token;
+    sessionStorage.setItem('auth_refresh_token', response.refresh_token);
+  }
+  localStorage.setItem('auth_token', response.access_token);
   localStorage.setItem('auth_token_expiry', tokenExpiry.toString());
+  scheduleRefresh();
 }
 
 function clearToken() {
+  if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+  refreshTimer = undefined;
   currentToken = null;
+  currentRefreshToken = null;
   tokenExpiry = 0;
   localStorage.removeItem('auth_token');
   localStorage.removeItem('auth_token_expiry');
+  sessionStorage.removeItem('auth_refresh_token');
   sessionStorage.removeItem('pkce_verifier');
+  sessionStorage.removeItem('oidc_state');
+}
+
+function scheduleRefresh() {
+  if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+  const refreshIn = Math.max(1_000, tokenExpiry - Date.now() - 60_000);
+  refreshTimer = window.setTimeout(() => {
+    void refreshAccessToken().then((refreshed) => {
+      if (!refreshed) window.dispatchEvent(new Event('netlens-auth-expired'));
+    });
+  }, refreshIn);
 }
 
 function generateCodeVerifier(): string {
@@ -42,18 +65,17 @@ function generateCodeVerifier(): string {
 }
 
 async function generateCodeChallenge(verifier: string): Promise<string> {
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(verifier);
-    const hash = await crypto.subtle.digest('SHA-256', data);
-    return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  if (!crypto.subtle) {
+    throw new Error('PKCE S256 requires a secure browser context');
   }
-  // Fallback for HTTP - use plain method
-  return verifier;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function isAuthenticated(): boolean {
-  return currentToken !== null && Date.now() < tokenExpiry;
+  return currentToken !== null && Date.now() < tokenExpiry - 5_000;
 }
 
 export function getToken(): string | null {
@@ -75,7 +97,9 @@ export function getUser(): AuthenticatedUser | null {
   const token = getToken();
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1])) as AuthenticatedUser;
+    const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as AuthenticatedUser;
     return {
       sub: payload.sub,
       preferred_username: payload.preferred_username || payload.email,
@@ -93,12 +117,14 @@ export function hasRole(role: string): boolean {
 }
 
 export async function login(): Promise<void> {
-    if (authProcessing) return;
-    if (!KEYCLOAK_URL) throw new Error('VITE_KEYCLOAK_URL is not configured');
+  if (authProcessing) return;
+  if (!KEYCLOAK_URL) throw new Error('VITE_KEYCLOAK_URL is not configured');
 
   const verifier = generateCodeVerifier();
+  const state = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
   sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('oidc_state', state);
 
   const params = new URLSearchParams({
     client_id: KEYCLOAK_CLIENT_ID,
@@ -107,9 +133,9 @@ export async function login(): Promise<void> {
     scope: 'openid profile email',
     code_challenge: challenge,
     code_challenge_method: 'S256',
+    state,
   });
 
-  console.log('Redirecting to Keycloak...');
   window.location.href = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth?${params.toString()}`;
 }
 
@@ -121,8 +147,7 @@ export async function handleCallback(): Promise<boolean> {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const error = params.get('error');
-
-    console.log('Callback received:', { code: code ? 'yes' : 'no', error });
+    const returnedState = params.get('state');
 
     // Clear URL immediately
     if (code || error) {
@@ -137,13 +162,14 @@ export async function handleCallback(): Promise<boolean> {
     if (!code) return false;
 
     const verifier = sessionStorage.getItem('pkce_verifier');
-    if (!verifier) {
-      console.error('No PKCE verifier found');
+    const expectedState = sessionStorage.getItem('oidc_state');
+    if (!verifier || !expectedState || returnedState !== expectedState) {
+      console.error('Invalid OIDC callback state');
+      clearToken();
       return false;
     }
 
     const tokenEndpoint = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
-    console.log('Exchanging code for token...');
 
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
@@ -157,19 +183,15 @@ export async function handleCallback(): Promise<boolean> {
       }),
     });
 
-    console.log('Token response status:', response.status);
-
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Token exchange failed:', response.status, errorText);
+      console.error('Token exchange failed:', response.status);
       return false;
     }
 
     const data: TokenResponse = await response.json();
-    console.log('Token received successfully');
-
-    saveToken(data.access_token, data.expires_in);
+    saveToken(data);
     sessionStorage.removeItem('pkce_verifier');
+    sessionStorage.removeItem('oidc_state');
 
     return true;
   } catch (err) {
@@ -178,6 +200,41 @@ export async function handleCallback(): Promise<boolean> {
   } finally {
     authProcessing = false;
   }
+}
+
+export async function refreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  if (!KEYCLOAK_URL || !currentRefreshToken) return false;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(
+        `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            client_id: KEYCLOAK_CLIENT_ID,
+            refresh_token: currentRefreshToken as string,
+          }),
+        },
+      );
+      if (!response.ok) {
+        clearToken();
+        return false;
+      }
+      saveToken(await response.json() as TokenResponse);
+      return true;
+    } catch {
+      clearToken();
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function logout(): Promise<void> {
@@ -200,10 +257,7 @@ export async function initAuth(): Promise<boolean> {
 
   // If we have a code, exchange it for token
   if (params.has('code')) {
-    console.log('Found code in URL, exchanging...');
-    const result = await handleCallback();
-    console.log('Token exchange result:', result);
-    return result;
+    return handleCallback();
   }
 
   // If we have an error, clear it
@@ -212,6 +266,10 @@ export async function initAuth(): Promise<boolean> {
     return false;
   }
 
-  // Check if we already have a valid token
-  return isAuthenticated();
+  if (isAuthenticated()) {
+    scheduleRefresh();
+    return true;
+  }
+
+  return refreshAccessToken();
 }

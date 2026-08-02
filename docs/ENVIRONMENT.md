@@ -12,6 +12,7 @@ or documentation must be rotated before deployment.
 | `REDIS_*` / `REDIS_URL` | Cache, rate limiting, and scheduler advisory coordination |
 | `AUTH_ENABLED=true` | Enables JWT authentication; required for production |
 | `KEYCLOAK_ISSUER_URL` | Exact realm issuer URL |
+| `KEYCLOAK_JWKS_URL` | Optional private realm URL used by backend containers to fetch signing keys |
 | `KEYCLOAK_CLIENT_ID` | OIDC client ID |
 | `KEYCLOAK_AUDIENCE` | Audience that must be present in backend JWTs |
 | `NETBOX_URL`, `NETBOX_TOKEN` | Read-only NetBox API access |
@@ -63,6 +64,12 @@ container trust store. The `false` examples exist only for isolated development.
 The frontend variables are build-time values. `VITE_AUTH_ENABLED` must match backend
 `AUTH_ENABLED`; use the same Keycloak URL, realm, and client. `VITE_API_BASE_URL=/api`
 uses the included nginx reverse proxy and avoids embedding an environment-specific host.
+
+The included Compose stack imports `keycloak/netlens-realm.json` on the first Keycloak
+startup and creates the SPA client, `admin`, `user`, and `export` roles, plus the initial
+administrator configured in `.env`. Keycloak skips startup import when that realm already
+exists. `KEYCLOAK_START_COMMAND=start-dev` is for local use only; production must use
+`start` behind the deployment's HTTPS/hostname configuration.
 
 ## Secret-handling rules
 

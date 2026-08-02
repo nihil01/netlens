@@ -1,3 +1,5 @@
+import { getToken, refreshAccessToken } from './auth';
+
 export type IntegrationStatus = {
   status: 'ok' | 'not_configured' | 'error';
   message: string | null;
@@ -199,8 +201,9 @@ export type NetBoxDeviceDetail = NetBoxDevice & {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  let token = getToken();
+  if (!token && await refreshAccessToken()) token = getToken();
   if (token) {
     return { 'Authorization': `Bearer ${token}` };
   }
@@ -211,7 +214,7 @@ async function apiGet<T>(path: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
     });
   } catch {
     throw new Error('API qoşulma xətası');
@@ -227,7 +230,7 @@ async function apiPost<T>(path: string): Promise<T> {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
     });
   } catch {
     throw new Error('API qoşulma xətası');
@@ -274,7 +277,7 @@ export function fetchInventoryStatus(): Promise<InventoryStatus> {
 export async function triggerInventoryRefresh(): Promise<{ status: string }> {
   const response = await fetch(`${API_BASE_URL}/scheduler/inventory/refresh`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
   });
   if (!response.ok) throw new Error(`Refresh failed: ${response.status}`);
   return response.json();
@@ -367,7 +370,7 @@ export async function exportPdfReport(ip: string, start: string, end: string): P
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/report.pdf?${params.toString()}`, {
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
     });
   } catch {
     throw new Error('API qoşulma xətası');
@@ -397,7 +400,7 @@ export async function exportIpExcel(ip: string, filters: IpSummaryFilters = {}):
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/export.xlsx${query ? `?${query}` : ''}`, {
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
     });
   } catch {
     throw new Error('API qoşulma xətası');
@@ -634,7 +637,7 @@ export async function subscribeMonitoringEvents(
   signal: AbortSignal,
   lastEventId?: string | null,
 ): Promise<void> {
-  const headers = getAuthHeaders();
+  const headers = await getAuthHeaders();
   headers.Accept = 'text/event-stream';
   if (lastEventId) headers['Last-Event-ID'] = lastEventId;
   const response = await fetch(`${API_BASE_URL}/monitoring/events`, { headers, signal });
@@ -919,7 +922,7 @@ export async function downloadAuditCsv(filters: {
   if (filters.dateFrom) params.set('date_from', filters.dateFrom);
   if (filters.dateTo) params.set('date_to', filters.dateTo);
   const response = await fetch(`${API_BASE_URL}/fmc-audit/export?${params}`, {
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
   });
   if (!response.ok) throw new Error(`Export response: ${response.status}`);
   const link = document.createElement('a');

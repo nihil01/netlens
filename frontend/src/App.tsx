@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LogIn } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchInventoryStatus,
@@ -8,7 +8,7 @@ import {
   resetNetBoxData,
   triggerInventoryRefresh,
 } from './api';
-import { initAuth } from './auth';
+import { initAuth, login } from './auth';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GraphPage } from './pages/GraphPage';
@@ -38,21 +38,28 @@ export function App() {
   const [graphLevels, setGraphLevels] = useState<GraphLevels>({ region: true, site: true, device: true, interface: true });
 
   useEffect(() => {
-    initAuth().then((isAuth) => {
-      setLoggedIn(isAuth);
-      setAuthReady(true);
-    });
+    const handleExpired = () => setLoggedIn(false);
+    window.addEventListener('netlens-auth-expired', handleExpired);
+    void initAuth()
+      .then(setLoggedIn)
+      .catch((error) => console.error('Authentication initialization failed:', error))
+      .finally(() => setAuthReady(true));
+    return () => window.removeEventListener('netlens-auth-expired', handleExpired);
   }, []);
+
+  const apiEnabled = !AUTH_ENABLED || loggedIn;
 
   const inventory = useQuery({
     queryKey: ['netbox-inventory'],
     queryFn: fetchNetBoxInventory,
+    enabled: apiEnabled,
   });
 
   const inventoryStatus = useQuery({
     queryKey: ['inventory-status'],
     queryFn: fetchInventoryStatus,
     refetchInterval: 60_000,
+    enabled: apiEnabled,
   });
 
   async function handleRefreshInventory() {
@@ -90,7 +97,7 @@ export function App() {
   const selectedDeviceDetail = useQuery({
     queryKey: ['netbox-device-detail', selectedDeviceId],
     queryFn: () => fetchNetBoxDeviceDetail(selectedDeviceId as number),
-    enabled: selectedDeviceId !== null,
+    enabled: apiEnabled && selectedDeviceId !== null,
   });
 
   function selectDevice(deviceId: number) {
@@ -117,6 +124,14 @@ export function App() {
           <h1 className="text-xl font-bold text-gray-900">NetLens</h1>
           <p className="mt-2 text-sm text-gray-500">Şəbəkə Auditi · NetBox · OpenSearch</p>
           <p className="mt-4 text-sm text-gray-600">Daxil olmaq üçün Keycloak-a keçin</p>
+          <button
+            type="button"
+            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            onClick={() => void login()}
+          >
+            <LogIn size={16} />
+            Daxil ol
+          </button>
         </div>
       </div>
     );

@@ -57,8 +57,9 @@ class Settings(BaseSettings):
     # --- Auth / Keycloak ---
     auth_enabled: bool = False
     keycloak_issuer_url: AnyHttpUrl | None = None
+    keycloak_jwks_url: AnyHttpUrl | None = None
     keycloak_client_id: str = "netlens"
-    keycloak_audience: str = "account"
+    keycloak_audience: str = "netlens"
     keycloak_realm_roles: list[str] = Field(default_factory=lambda: ["admin", "user"])
 
     # --- NetBox ---

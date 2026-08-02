@@ -4,7 +4,7 @@ ARG VITE_API_BASE_URL=/api
 ARG VITE_KEYCLOAK_URL=http://localhost:8080
 ARG VITE_KEYCLOAK_REALM=netlens
 ARG VITE_KEYCLOAK_CLIENT_ID=netlens
-ARG VITE_AUTH_ENABLED=false
+ARG VITE_AUTH_ENABLED=true
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
 ENV VITE_KEYCLOAK_REALM=$VITE_KEYCLOAK_REALM
@@ -14,6 +14,7 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
+RUN test "$VITE_AUTH_ENABLED" != "true" || grep -R -q "Daxil olmaq üçün Keycloak-a keçin" dist/assets
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

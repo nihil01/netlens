@@ -30,7 +30,10 @@ async def get_current_user(
         raise HTTPException(status_code=500, detail="KEYCLOAK_ISSUER_URL is not configured")
 
     try:
-        jwks = await get_jwks(str(settings.keycloak_issuer_url), request.app.state)
+        # Tokens use the public browser-facing issuer, while containers fetch
+        # signing keys over the private Compose network.
+        jwks_source = settings.keycloak_jwks_url or settings.keycloak_issuer_url
+        jwks = await get_jwks(str(jwks_source), request.app.state)
         payload = jwt.decode(
             credentials.credentials,
             jwks,
