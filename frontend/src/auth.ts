@@ -6,6 +6,7 @@
 const KEYCLOAK_URL = (import.meta.env.VITE_KEYCLOAK_URL || '').replace(/\/$/, '');
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'netlens';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'netlens';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 const REDIRECT_URI = window.location.origin;
 
 interface TokenResponse {
@@ -174,14 +175,10 @@ export async function handleCallback(): Promise<boolean> {
       return false;
     }
 
-    const tokenEndpoint = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
-
-    const response = await fetch(tokenEndpoint, {
+    const response = await fetch(`${API_BASE_URL}/auth/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: KEYCLOAK_CLIENT_ID,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         code,
         redirect_uri: REDIRECT_URI,
         code_verifier: verifier,
@@ -189,8 +186,8 @@ export async function handleCallback(): Promise<boolean> {
     });
 
     if (!response.ok) {
-      console.error('Token exchange failed:', response.status);
-      return false;
+      const payload = await response.json().catch(() => null) as { detail?: string } | null;
+      throw new Error(payload?.detail || `Token exchange failed: ${response.status}`);
     }
 
     const data: TokenResponse = await response.json();
@@ -201,7 +198,7 @@ export async function handleCallback(): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Token exchange error:', err);
-    return false;
+    throw err;
   } finally {
     authProcessing = false;
   }
@@ -213,18 +210,11 @@ export async function refreshAccessToken(): Promise<boolean> {
 
   refreshPromise = (async () => {
     try {
-      const response = await fetch(
-        `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            client_id: KEYCLOAK_CLIENT_ID,
-            refresh_token: currentRefreshToken as string,
-          }),
-        },
-      );
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: currentRefreshToken }),
+      });
       if (!response.ok) {
         clearToken();
         return false;

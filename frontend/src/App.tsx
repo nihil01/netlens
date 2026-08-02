@@ -43,7 +43,12 @@ export function App() {
     window.addEventListener('netlens-auth-expired', handleExpired);
     void initAuth()
       .then(setLoggedIn)
-      .catch((error) => console.error('Authentication initialization failed:', error))
+      .catch((error) => {
+        console.error('Authentication initialization failed:', error);
+        setAuthError(
+          error instanceof Error ? error.message : 'Keycloak girişini tamamlamaq mümkün olmadı.',
+        );
+      })
       .finally(() => setAuthReady(true));
     return () => window.removeEventListener('netlens-auth-expired', handleExpired);
   }, []);
