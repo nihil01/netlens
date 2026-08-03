@@ -9,11 +9,18 @@ logger = logging.getLogger(__name__)
 JWKS_CACHE_TTL = 600  # 10 minutes
 
 
-async def get_jwks(issuer_url: str, app_state: Any) -> dict[str, Any]:
+async def get_jwks(
+    issuer_url: str,
+    app_state: Any,
+    *,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
     cached = getattr(app_state, "jwks", None)
     cached_ts = getattr(app_state, "jwks_ts", None)
+    cached_source = getattr(app_state, "jwks_source", None)
 
-    if cached is not None and cached_ts is not None:
+    cache_matches = cached_source == issuer_url and cached is not None and cached_ts is not None
+    if not force_refresh and cache_matches:
         if (time.monotonic() - cached_ts) < JWKS_CACHE_TTL:
             return cached
 
@@ -25,5 +32,6 @@ async def get_jwks(issuer_url: str, app_state: Any) -> dict[str, Any]:
 
     app_state.jwks = jwks
     app_state.jwks_ts = time.monotonic()
+    app_state.jwks_source = issuer_url
     logger.info("JWKS refreshed from %s", issuer_url)
     return jwks

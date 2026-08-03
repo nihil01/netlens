@@ -50,7 +50,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
     def _limit(self, path: str) -> int:
-        if path.endswith("/export") or path.endswith("/refresh"):
+        if (
+            path.endswith("/export")
+            or path.endswith("/refresh")
+            or path.endswith("/auth/token")
+        ):
             return max(1, self.settings.rate_limit_sensitive_requests_per_minute)
         return max(1, self.settings.rate_limit_requests_per_minute)
 
@@ -60,6 +64,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return "export"
         if path.endswith("/refresh"):
             return "refresh"
+        if path.endswith("/auth/token"):
+            return "auth-token"
         return "api"
 
     @staticmethod

@@ -210,12 +210,28 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const authHeaders = await getAuthHeaders();
+  if (authHeaders.Authorization) headers.set('Authorization', authHeaders.Authorization);
+
+  let response = await fetch(input, { ...init, headers });
+  if (response.status !== 401 || !await refreshAccessToken()) return response;
+
+  const refreshedHeaders = new Headers(init.headers);
+  const refreshedToken = getToken();
+  if (refreshedToken) refreshedHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+  response = await fetch(input, { ...init, headers: refreshedHeaders });
+  return response;
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: await getAuthHeaders(),
-    });
+    response = await authenticatedFetch(`${API_BASE_URL}${path}`);
   } catch {
     throw new Error('API qoşulma xətası');
   }
@@ -228,9 +244,8 @@ async function apiGet<T>(path: string): Promise<T> {
 async function apiPost<T>(path: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await authenticatedFetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: await getAuthHeaders(),
     });
   } catch {
     throw new Error('API qoşulma xətası');
@@ -275,9 +290,8 @@ export function fetchInventoryStatus(): Promise<InventoryStatus> {
 }
 
 export async function triggerInventoryRefresh(): Promise<{ status: string }> {
-  const response = await fetch(`${API_BASE_URL}/scheduler/inventory/refresh`, {
+  const response = await authenticatedFetch(`${API_BASE_URL}/scheduler/inventory/refresh`, {
     method: 'POST',
-    headers: await getAuthHeaders(),
   });
   if (!response.ok) throw new Error(`Refresh failed: ${response.status}`);
   return response.json();
@@ -369,9 +383,9 @@ export async function exportPdfReport(ip: string, start: string, end: string): P
   const params = new URLSearchParams({ start, end, size: '500' });
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/report.pdf?${params.toString()}`, {
-      headers: await getAuthHeaders(),
-    });
+    response = await authenticatedFetch(
+      `${API_BASE_URL}/ip/${encodeURIComponent(ip)}/report.pdf?${params.toString()}`,
+    );
   } catch {
     throw new Error('API qoşulma xətası');
   }
@@ -399,9 +413,9 @@ export async function exportIpExcel(ip: string, filters: IpSummaryFilters = {}):
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/ip/${encodeURIComponent(ip)}/export.xlsx${query ? `?${query}` : ''}`, {
-      headers: await getAuthHeaders(),
-    });
+    response = await authenticatedFetch(
+      `${API_BASE_URL}/ip/${encodeURIComponent(ip)}/export.xlsx${query ? `?${query}` : ''}`,
+    );
   } catch {
     throw new Error('API qoşulma xətası');
   }
@@ -637,10 +651,10 @@ export async function subscribeMonitoringEvents(
   signal: AbortSignal,
   lastEventId?: string | null,
 ): Promise<void> {
-  const headers = await getAuthHeaders();
-  headers.Accept = 'text/event-stream';
-  if (lastEventId) headers['Last-Event-ID'] = lastEventId;
-  const response = await fetch(`${API_BASE_URL}/monitoring/events`, { headers, signal });
+  const headers = new Headers();
+  headers.set('Accept', 'text/event-stream');
+  if (lastEventId) headers.set('Last-Event-ID', lastEventId);
+  const response = await authenticatedFetch(`${API_BASE_URL}/monitoring/events`, { headers, signal });
   if (!response.ok || !response.body) throw new Error(`SSE response: ${response.status}`);
 
   const reader = response.body.getReader();
@@ -921,9 +935,7 @@ export async function downloadAuditCsv(filters: {
   if (filters.action) params.set('action', filters.action);
   if (filters.dateFrom) params.set('date_from', filters.dateFrom);
   if (filters.dateTo) params.set('date_to', filters.dateTo);
-  const response = await fetch(`${API_BASE_URL}/fmc-audit/export?${params}`, {
-    headers: await getAuthHeaders(),
-  });
+  const response = await authenticatedFetch(`${API_BASE_URL}/fmc-audit/export?${params}`);
   if (!response.ok) throw new Error(`Export response: ${response.status}`);
   const link = document.createElement('a');
   link.href = URL.createObjectURL(await response.blob());
